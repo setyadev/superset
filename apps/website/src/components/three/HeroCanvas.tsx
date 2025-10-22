@@ -69,11 +69,11 @@ function LitBackground() {
             {/* 3D Text that reacts to light */}
             <group ref={textGroupRef} position={[0, 0.5, 1]}>
                 {/* Create depth by layering multiple text instances */}
-                {[...Array(20)].map((_, i) => (
+                {[...Array(30)].map((_, i) => (
                     <Text
                         key={i.toString()}
-                        position={[0, 0, -i * 0.03]}
-                        fontSize={1.5}
+                        position={[0, 0, -i * 0.025]}
+                        fontSize={1.8}
                         color="#0a0a0a"
                         anchorX="center"
                         anchorY="middle"
