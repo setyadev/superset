@@ -88,13 +88,8 @@ function LitBackground() {
                     outlineColor="#000000"
                 >
                     ⊇
-                    <meshStandardMaterial
+                    <meshBasicMaterial
                         color="#000000"
-                        metalness={0.1}
-                        roughness={0.9}
-                        emissive="#000000"
-                        emissiveIntensity={0}
-                        envMapIntensity={0.2}
                     />
                 </Text>
 
