@@ -18,7 +18,7 @@ const WAVE_CONFIG = {
 } as const;
 
 const LIGHT_CONFIG = {
-	INTENSITY: 25,
+	INTENSITY: 28,
 	Z_POSITION: 2,
 	DEFAULT_X_RATIO: 0.18,
 	DEFAULT_Y_RATIO: 0.01,
@@ -33,9 +33,9 @@ const MATERIAL_CONFIG = {
 	BASE_COLOR: "#1a1a1a",
 	ROUGHNESS: 0.8,
 	METALNESS: 0.2,
-	AMBIENT_INTENSITY: 0.95,
-	DIFFUSE_INTENSITY: 0.15,
-	SPECULAR_INTENSITY: 0.05,
+	AMBIENT_INTENSITY: 0.85,
+	DIFFUSE_INTENSITY: 0.3,
+	SPECULAR_INTENSITY: 0.1,
 	ATTENUATION_LINEAR: 0.1,
 	ATTENUATION_QUADRATIC: 0.05,
 } as const;
@@ -115,10 +115,10 @@ const waveFragmentShader = `
     vec3 halfDir = normalize(lightDir + viewDir);
     float spec = pow(max(dot(vNormal, halfDir), 0.0), 32.0);
 
-    // Combine lighting - much more subtle effect
-    vec3 ambient = uColor * 0.95;  // Mostly base color
-    vec3 diffuse = uColor * diff * uLightColor * attenuation * 0.15;  // Very subtle diffuse
-    vec3 specular = uLightColor * spec * attenuation * 0.05 * (1.0 - uRoughness);  // Very subtle specular
+    // Combine lighting - more visible effect
+    vec3 ambient = uColor * 0.85;  // Reduced ambient for more contrast
+    vec3 diffuse = uColor * diff * uLightColor * attenuation * 0.3;  // More visible diffuse
+    vec3 specular = uLightColor * spec * attenuation * 0.1 * (1.0 - uRoughness);  // More visible specular
 
     vec3 finalColor = ambient + diffuse + specular;
     gl_FragColor = vec4(finalColor, 1.0);
@@ -215,12 +215,23 @@ function LitBackground() {
 
 		// Mouse-controlled light position (always active)
 		const hasMouseMoved = state.mouse.x !== 0 || state.mouse.y !== 0;
+
+		// Normal position for symbol lighting
 		const x = hasMouseMoved
-			? state.mouse.x * viewport.width
+			? (state.mouse.x * viewport.width) / 2
 			: viewport.width * LIGHT_CONFIG.DEFAULT_X_RATIO;
 		const y = hasMouseMoved
-			? state.mouse.y * viewport.height
+			? (state.mouse.y * viewport.height) / 2
 			: viewport.height * LIGHT_CONFIG.DEFAULT_Y_RATIO;
+
+		// Exaggerated position for backdrop shader (1.5x multiplier)
+		const backdropX = hasMouseMoved
+			? state.mouse.x * viewport.width * 1.5
+			: viewport.width * LIGHT_CONFIG.DEFAULT_X_RATIO;
+		const backdropY = hasMouseMoved
+			? state.mouse.y * viewport.height * 1.5
+			: viewport.height * LIGHT_CONFIG.DEFAULT_Y_RATIO;
+
 		const intensity = LIGHT_CONFIG.INTENSITY;
 
 		// Change color based on position - cooler palette (blue to cyan to purple)
@@ -274,11 +285,11 @@ function LitBackground() {
 				if (material.uniforms.uTime) {
 					material.uniforms.uTime.value = state.clock.elapsedTime;
 				}
-				// Update light position and color in shader
+				// Update light position in shader with exaggerated position for backdrop
 				if (material.uniforms.uLightPosition) {
 					material.uniforms.uLightPosition.value.set(
-						x,
-						y,
+						backdropX,
+						backdropY,
 						LIGHT_CONFIG.Z_POSITION,
 					);
 				}
@@ -299,7 +310,7 @@ function LitBackground() {
 	return (
 		<>
 			{/* Background plane that fills the viewport and faces camera */}
-			<mesh ref={meshRef} position={[0, 0, 0]}>
+			<mesh ref={meshRef} position={[0, 0, -0.5]}>
 				<planeGeometry
 					args={[
 						viewport.width * GEOMETRY_CONFIG.PLANE_SIZE_MULTIPLIER,
