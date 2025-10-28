@@ -154,7 +154,8 @@ export default function TerminalComponent({
 		const searchAddon = new SearchAddon();
 		term.loadAddon(searchAddon);
 
-		// Listen for window resize to auto-fit terminal
+		// Listen for container resize to auto-fit terminal
+		// Use ResizeObserver to detect when the container size changes
 		// Debounce resize to prevent excessive fit calls that cause terminal corruption
 		let resizeTimeout: ReturnType<typeof setTimeout> | null = null;
 		const handleResize = () => {
@@ -172,6 +173,12 @@ export default function TerminalComponent({
 				resizeTimeout = null;
 			}, 100);
 		};
+
+		// Observe container size changes
+		const resizeObserver = new ResizeObserver(handleResize);
+		resizeObserver.observe(container);
+
+		// Also listen for window resize as fallback
 		window.addEventListener("resize", handleResize);
 
 		const { cols, rows } = term;
@@ -230,6 +237,9 @@ export default function TerminalComponent({
 				clearTimeout(resizeTimeout);
 				resizeTimeout = null;
 			}
+
+			// Disconnect resize observer
+			resizeObserver.disconnect();
 
 			window.ipcRenderer.off("terminal-on-data", terminalDataListener);
 			window.removeEventListener("resize", handleResize);

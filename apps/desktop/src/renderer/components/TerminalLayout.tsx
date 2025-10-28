@@ -66,7 +66,7 @@ function SplitLayout({ split, workingDirectory }: SplitLayoutProps) {
 
 	return (
 		<div
-			className={`flex ${isVertical ? "flex-row" : "flex-col"} w-full h-full`}
+			className={`flex ${isVertical ? "flex-row" : "flex-col"} w-full h-full gap-2 p-2`}
 		>
 			{split.children.map((child, index) => {
 				const flexBasis = `${(split.ratio[index] / totalRatio) * 100}%`;
@@ -75,7 +75,7 @@ function SplitLayout({ split, workingDirectory }: SplitLayoutProps) {
 					<div
 						key={index}
 						style={{ flexBasis }}
-						className="flex-shrink-0 flex-grow-0 overflow-hidden"
+						className="flex-shrink-0 flex-grow-0 overflow-hidden rounded border border-neutral-800"
 					>
 						<LayoutNodeRenderer
 							node={child}
