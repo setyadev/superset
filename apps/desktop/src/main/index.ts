@@ -6,6 +6,7 @@ import { setupAutoUpdater } from "./lib/auto-updater";
 import { initDb } from "./lib/db";
 import { registerStorageHandlers } from "./lib/storage-ipcs";
 import { terminalManager } from "./lib/terminal-manager";
+import { registerWindowHandlers } from "./lib/window-ipcs";
 import { MainWindow } from "./windows/main";
 
 // Protocol scheme for deep linking
@@ -29,6 +30,7 @@ app.on("open-url", (event, _url) => {
 });
 
 registerStorageHandlers();
+registerWindowHandlers();
 
 // Allow multiple instances - removed single instance lock
 (async () => {

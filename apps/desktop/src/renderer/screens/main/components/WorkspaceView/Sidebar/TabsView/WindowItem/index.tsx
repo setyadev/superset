@@ -3,7 +3,7 @@ import { Input } from "@superset/ui/input";
 import { useRef, useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { HiMiniXMark } from "react-icons/hi2";
-import { trpc } from "renderer/lib/trpc";
+import { useActiveWorkspace } from "renderer/react-query/workspaces";
 import { useWindowsStore } from "renderer/stores/tabs/store";
 import type { Window } from "renderer/stores/tabs/types";
 import { getWindowDisplayName } from "renderer/stores/tabs/utils";
@@ -24,7 +24,7 @@ interface WindowItemProps {
 }
 
 export function WindowItem({ window, index, isActive }: WindowItemProps) {
-	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery();
+	const { data: activeWorkspace } = useActiveWorkspace();
 	const activeWorkspaceId = activeWorkspace?.id;
 	const removeWindow = useWindowsStore((s) => s.removeWindow);
 	const setActiveWindow = useWindowsStore((s) => s.setActiveWindow);

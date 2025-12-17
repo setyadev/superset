@@ -1,7 +1,11 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
+import { useWindowId } from "renderer/contexts/WindowIdContext";
 import { trpc } from "renderer/lib/trpc";
-import { useSetActiveWorkspace } from "renderer/react-query/workspaces";
+import {
+	useActiveWorkspace,
+	useSetActiveWorkspace,
+} from "renderer/react-query/workspaces";
 import {
 	useCurrentView,
 	useIsSettingsTabOpen,
@@ -16,9 +20,45 @@ const MAX_WORKSPACE_WIDTH = 160;
 const ADD_BUTTON_WIDTH = 48;
 
 export function WorkspacesTabs() {
-	const { data: groups = [] } = trpc.workspaces.getAllGrouped.useQuery();
-	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery();
+	const windowId = useWindowId();
+	// Get only workspaces that are open in this window
+	const { data: openWorkspaces = [] } =
+		trpc.workspaces.getOpenWorkspaces.useQuery(
+			{ windowId: windowId ?? "" },
+			{ enabled: windowId !== null },
+		);
+	const { data: activeWorkspace } = useActiveWorkspace();
 	const activeWorkspaceId = activeWorkspace?.id || null;
+
+	// Group open workspaces by project for display
+	const groups = useMemo(() => {
+		const projectMap = new Map<
+			string,
+			{
+				project: { id: string; name: string; color: string; tabOrder: number };
+				workspaces: typeof openWorkspaces;
+			}
+		>();
+
+		for (const workspace of openWorkspaces) {
+			if (!workspace.project) continue;
+
+			if (!projectMap.has(workspace.project.id)) {
+				projectMap.set(workspace.project.id, {
+					project: {
+						id: workspace.project.id,
+						name: workspace.project.name,
+						color: workspace.project.color,
+						tabOrder: 0, // We'll sort by first workspace appearance
+					},
+					workspaces: [],
+				});
+			}
+			projectMap.get(workspace.project.id)?.workspaces.push(workspace);
+		}
+
+		return Array.from(projectMap.values());
+	}, [openWorkspaces]);
 	const setActiveWorkspace = useSetActiveWorkspace();
 	const currentView = useCurrentView();
 	const isSettingsTabOpen = useIsSettingsTabOpen();

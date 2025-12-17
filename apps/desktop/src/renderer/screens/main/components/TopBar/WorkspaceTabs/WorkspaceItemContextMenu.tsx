@@ -12,12 +12,14 @@ interface WorkspaceItemContextMenuProps {
 	children: ReactNode;
 	worktreePath: string;
 	onRename: () => void;
+	onDelete: () => void;
 }
 
 export function WorkspaceItemContextMenu({
 	children,
 	worktreePath,
 	onRename,
+	onDelete,
 }: WorkspaceItemContextMenuProps) {
 	const openInFinder = trpc.external.openInFinder.useMutation();
 
@@ -35,6 +37,13 @@ export function WorkspaceItemContextMenu({
 				<ContextMenuSeparator />
 				<ContextMenuItem onSelect={handleOpenInFinder}>
 					Open in Finder
+				</ContextMenuItem>
+				<ContextMenuSeparator />
+				<ContextMenuItem
+					onSelect={onDelete}
+					className="text-destructive focus:text-destructive"
+				>
+					Delete Workspace
 				</ContextMenuItem>
 			</ContextMenuContent>
 		</ContextMenu>

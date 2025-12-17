@@ -16,7 +16,10 @@ import {
 } from "react-icons/hi2";
 import { trpc } from "renderer/lib/trpc";
 import { useOpenNew } from "renderer/react-query/projects";
-import { useCreateWorkspace } from "renderer/react-query/workspaces";
+import {
+	useActiveWorkspace,
+	useCreateWorkspace,
+} from "renderer/react-query/workspaces";
 
 const INITIAL_PROJECTS_LIMIT = 5;
 
@@ -58,7 +61,7 @@ export function WorkspaceDropdown({ className }: WorkspaceDropdownProps) {
 	const primaryButtonRef = useRef<HTMLButtonElement>(null);
 	const dropdownTriggerRef = useRef<HTMLButtonElement>(null);
 
-	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery();
+	const { data: activeWorkspace } = useActiveWorkspace();
 	const { data: recentProjects = [] } = trpc.projects.getRecents.useQuery();
 	const { data: homeDir } = trpc.window.getHomeDir.useQuery();
 	const createWorkspace = useCreateWorkspace();

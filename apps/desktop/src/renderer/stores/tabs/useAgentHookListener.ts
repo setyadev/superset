@@ -1,3 +1,4 @@
+import { useWindowId } from "renderer/contexts/WindowIdContext";
 import { trpc } from "renderer/lib/trpc";
 import { useSetActiveWorkspace } from "renderer/react-query/workspaces/useSetActiveWorkspace";
 import { useWindowsStore } from "./store";
@@ -8,7 +9,11 @@ import { useWindowsStore } from "./store";
  */
 export function useAgentHookListener() {
 	const setActiveWorkspace = useSetActiveWorkspace();
-	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery();
+	const windowId = useWindowId();
+	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery(
+		{ windowId: windowId ?? undefined },
+		{ enabled: windowId !== null },
+	);
 
 	trpc.notifications.subscribe.useSubscription(undefined, {
 		onData: (event) => {

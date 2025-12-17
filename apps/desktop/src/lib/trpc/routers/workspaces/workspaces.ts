@@ -21,11 +21,205 @@ import { getWorktreePath } from "./utils/worktree";
 
 export const createWorkspacesRouter = () => {
 	return router({
+		// ============================================
+		// WINDOW STATE MANAGEMENT
+		// ============================================
+
+		/**
+		 * Get the state of a specific window
+		 */
+		getWindowState: publicProcedure
+			.input(z.object({ windowId: z.string() }))
+			.query(({ input }) => {
+				const windowState = db.data.settings.windows?.[input.windowId];
+				if (!windowState) {
+					return {
+						openWorkspaceIds: [],
+						activeWorkspaceId: null,
+					};
+				}
+
+				// Filter out any workspace IDs that no longer exist
+				const validOpenIds = windowState.openWorkspaceIds.filter((id) =>
+					db.data.workspaces.some((w) => w.id === id),
+				);
+
+				const activeId =
+					windowState.activeWorkspaceId &&
+					validOpenIds.includes(windowState.activeWorkspaceId)
+						? windowState.activeWorkspaceId
+						: (validOpenIds[0] ?? null);
+
+				return {
+					openWorkspaceIds: validOpenIds,
+					activeWorkspaceId: activeId,
+				};
+			}),
+
+		/**
+		 * Open a workspace in a window (add to tabs)
+		 */
+		openInWindow: publicProcedure
+			.input(
+				z.object({
+					windowId: z.string(),
+					workspaceId: z.string(),
+					setActive: z.boolean().optional().default(true),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				const workspace = db.data.workspaces.find(
+					(w) => w.id === input.workspaceId,
+				);
+				if (!workspace) {
+					throw new Error(`Workspace ${input.workspaceId} not found`);
+				}
+
+				await db.update((data) => {
+					if (!data.settings.windows) {
+						data.settings.windows = {};
+					}
+					if (!data.settings.windows[input.windowId]) {
+						data.settings.windows[input.windowId] = {
+							openWorkspaceIds: [],
+							activeWorkspaceId: null,
+						};
+					}
+
+					const windowState = data.settings.windows[input.windowId];
+
+					// Add to open workspaces if not already there
+					if (!windowState.openWorkspaceIds.includes(input.workspaceId)) {
+						windowState.openWorkspaceIds.push(input.workspaceId);
+					}
+
+					// Set as active if requested
+					if (input.setActive) {
+						windowState.activeWorkspaceId = input.workspaceId;
+					}
+
+					// Update workspace lastOpenedAt
+					const ws = data.workspaces.find((w) => w.id === input.workspaceId);
+					if (ws) {
+						ws.lastOpenedAt = Date.now();
+					}
+				});
+
+				return { success: true };
+			}),
+
+		/**
+		 * Close a workspace in a window (remove from tabs, does NOT delete)
+		 */
+		closeInWindow: publicProcedure
+			.input(
+				z.object({
+					windowId: z.string(),
+					workspaceId: z.string(),
+				}),
+			)
+			.mutation(async ({ input }) => {
+				await db.update((data) => {
+					const windowState = data.settings.windows?.[input.windowId];
+					if (!windowState) return;
+
+					// Remove from open workspaces
+					windowState.openWorkspaceIds = windowState.openWorkspaceIds.filter(
+						(id) => id !== input.workspaceId,
+					);
+
+					// If this was the active workspace, switch to another
+					if (windowState.activeWorkspaceId === input.workspaceId) {
+						windowState.activeWorkspaceId =
+							windowState.openWorkspaceIds[0] ?? null;
+					}
+				});
+
+				return { success: true };
+			}),
+
+		/**
+		 * Clean up window state when window is closed
+		 */
+		cleanupWindow: publicProcedure
+			.input(z.object({ windowId: z.string() }))
+			.mutation(async ({ input }) => {
+				await db.update((data) => {
+					if (data.settings.windows) {
+						delete data.settings.windows[input.windowId];
+					}
+				});
+
+				return { success: true };
+			}),
+
+		/**
+		 * Save window state for restoration on next app launch
+		 */
+		saveRestoreState: publicProcedure
+			.input(z.object({ windowId: z.string() }))
+			.mutation(async ({ input }) => {
+				const windowState = db.data.settings.windows?.[input.windowId];
+				if (windowState && windowState.openWorkspaceIds.length > 0) {
+					await db.update((data) => {
+						data.settings.restoreWindowState = { ...windowState };
+					});
+				}
+				return { success: true };
+			}),
+
+		/**
+		 * Restore saved state to a new window (used on app restart)
+		 * Returns true if state was restored, false if no state to restore
+		 */
+		restoreWindowState: publicProcedure
+			.input(z.object({ windowId: z.string() }))
+			.mutation(async ({ input }) => {
+				const restoreState = db.data.settings.restoreWindowState;
+				if (!restoreState || restoreState.openWorkspaceIds.length === 0) {
+					return { restored: false };
+				}
+
+				// Validate that the workspaces still exist
+				const validOpenIds = restoreState.openWorkspaceIds.filter((id) =>
+					db.data.workspaces.some((w) => w.id === id),
+				);
+
+				if (validOpenIds.length === 0) {
+					return { restored: false };
+				}
+
+				const activeId =
+					restoreState.activeWorkspaceId &&
+					validOpenIds.includes(restoreState.activeWorkspaceId)
+						? restoreState.activeWorkspaceId
+						: (validOpenIds[0] ?? null);
+
+				await db.update((data) => {
+					if (!data.settings.windows) {
+						data.settings.windows = {};
+					}
+					data.settings.windows[input.windowId] = {
+						openWorkspaceIds: validOpenIds,
+						activeWorkspaceId: activeId,
+					};
+					// Clear restore state after using it
+					delete data.settings.restoreWindowState;
+				});
+
+				return { restored: true };
+			}),
+
+		// ============================================
+		// WORKSPACE CRUD
+		// ============================================
+
 		create: publicProcedure
 			.input(
 				z.object({
 					projectId: z.string(),
 					name: z.string().optional(),
+					windowId: z.string().optional(),
 				}),
 			)
 			.mutation(async ({ input }) => {
@@ -104,6 +298,24 @@ export const createWorkspacesRouter = () => {
 				await db.update((data) => {
 					data.worktrees.push(worktree);
 					data.workspaces.push(workspace);
+
+					// Auto-open in the creating window and set as active
+					if (input.windowId) {
+						if (!data.settings.windows) {
+							data.settings.windows = {};
+						}
+						if (!data.settings.windows[input.windowId]) {
+							data.settings.windows[input.windowId] = {
+								openWorkspaceIds: [],
+								activeWorkspaceId: null,
+							};
+						}
+						const windowState = data.settings.windows[input.windowId];
+						windowState.openWorkspaceIds.push(workspace.id);
+						windowState.activeWorkspaceId = workspace.id;
+					}
+
+					// Also set global for backward compatibility
 					data.settings.lastActiveWorkspaceId = workspace.id;
 
 					const p = data.projects.find((p) => p.id === input.projectId);
@@ -208,44 +420,59 @@ export const createWorkspacesRouter = () => {
 			);
 		}),
 
-		getActive: publicProcedure.query(() => {
-			const { lastActiveWorkspaceId } = db.data.settings;
+		/**
+		 * Get the active workspace for a window
+		 * Uses new per-window state model
+		 */
+		getActive: publicProcedure
+			.input(z.object({ windowId: z.string().optional() }).optional())
+			.query(({ input }) => {
+				const windowId = input?.windowId;
 
-			if (!lastActiveWorkspaceId) {
-				return null;
-			}
+				let activeWorkspaceId: string | undefined;
 
-			const workspace = db.data.workspaces.find(
-				(w) => w.id === lastActiveWorkspaceId,
-			);
-			if (!workspace) {
-				throw new Error(
-					`Active workspace ${lastActiveWorkspaceId} not found in database`,
+				if (windowId) {
+					// Use per-window state
+					const windowState = db.data.settings.windows?.[windowId];
+					activeWorkspaceId = windowState?.activeWorkspaceId ?? undefined;
+				} else {
+					// Fallback to global for backward compatibility
+					activeWorkspaceId = db.data.settings.lastActiveWorkspaceId;
+				}
+
+				if (!activeWorkspaceId) {
+					return null;
+				}
+
+				const workspace = db.data.workspaces.find(
+					(w) => w.id === activeWorkspaceId,
 				);
-			}
+				if (!workspace) {
+					return null;
+				}
 
-			const project = db.data.projects.find(
-				(p) => p.id === workspace.projectId,
-			);
-			const worktree = db.data.worktrees.find(
-				(wt) => wt.id === workspace.worktreeId,
-			);
+				const project = db.data.projects.find(
+					(p) => p.id === workspace.projectId,
+				);
+				const worktree = db.data.worktrees.find(
+					(wt) => wt.id === workspace.worktreeId,
+				);
 
-			return {
-				...workspace,
-				worktreePath: getWorktreePath(workspace.worktreeId) ?? "",
-				project: project
-					? {
-							id: project.id,
-							name: project.name,
-							mainRepoPath: project.mainRepoPath,
-						}
-					: null,
-				worktree: worktree
-					? { branch: worktree.branch, gitStatus: worktree.gitStatus }
-					: null,
-			};
-		}),
+				return {
+					...workspace,
+					worktreePath: getWorktreePath(workspace.worktreeId) ?? "",
+					project: project
+						? {
+								id: project.id,
+								name: project.name,
+								mainRepoPath: project.mainRepoPath,
+							}
+						: null,
+					worktree: worktree
+						? { branch: worktree.branch, gitStatus: worktree.gitStatus }
+						: null,
+				};
+			}),
 
 		update: publicProcedure
 			.input(
@@ -430,6 +657,21 @@ export const createWorkspacesRouter = () => {
 							.sort((a, b) => b.lastOpenedAt - a.lastOpenedAt);
 						data.settings.lastActiveWorkspaceId = sorted[0]?.id || undefined;
 					}
+
+					// Clean up from all windows' open workspace lists
+					if (data.settings.windows) {
+						for (const windowState of Object.values(data.settings.windows)) {
+							// Remove from openWorkspaceIds
+							windowState.openWorkspaceIds =
+								windowState.openWorkspaceIds.filter((id) => id !== input.id);
+
+							// If it was active, switch to another
+							if (windowState.activeWorkspaceId === input.id) {
+								windowState.activeWorkspaceId =
+									windowState.openWorkspaceIds[0] ?? null;
+							}
+						}
+					}
 				});
 
 				const terminalWarning =
@@ -440,8 +682,12 @@ export const createWorkspacesRouter = () => {
 				return { success: true, teardownError, terminalWarning };
 			}),
 
+		/**
+		 * Set the active workspace for a window
+		 * Workspace must be in the window's openWorkspaceIds
+		 */
 		setActive: publicProcedure
-			.input(z.object({ id: z.string() }))
+			.input(z.object({ id: z.string(), windowId: z.string().optional() }))
 			.mutation(async ({ input }) => {
 				await db.update((data) => {
 					const workspace = data.workspaces.find((w) => w.id === input.id);
@@ -449,6 +695,29 @@ export const createWorkspacesRouter = () => {
 						throw new Error(`Workspace ${input.id} not found`);
 					}
 
+					// Update per-window state if windowId provided
+					if (input.windowId) {
+						if (!data.settings.windows) {
+							data.settings.windows = {};
+						}
+						if (!data.settings.windows[input.windowId]) {
+							data.settings.windows[input.windowId] = {
+								openWorkspaceIds: [],
+								activeWorkspaceId: null,
+							};
+						}
+
+						const windowState = data.settings.windows[input.windowId];
+
+						// Auto-open the workspace if not already open
+						if (!windowState.openWorkspaceIds.includes(input.id)) {
+							windowState.openWorkspaceIds.push(input.id);
+						}
+
+						windowState.activeWorkspaceId = input.id;
+					}
+
+					// Also update global for backward compatibility
 					data.settings.lastActiveWorkspaceId = input.id;
 					workspace.lastOpenedAt = Date.now();
 					workspace.updatedAt = Date.now();
@@ -557,6 +826,77 @@ export const createWorkspacesRouter = () => {
 				});
 
 				return { gitStatus };
+			}),
+
+		/**
+		 * Find which window has a project open (has any workspace from that project open)
+		 * Returns windowId if found, null otherwise
+		 */
+		findWindowWithProject: publicProcedure
+			.input(z.object({ projectId: z.string() }))
+			.query(({ input }) => {
+				const windows = db.data.settings.windows;
+				if (!windows) return null;
+
+				// Get all workspace IDs for this project
+				const projectWorkspaceIds = new Set(
+					db.data.workspaces
+						.filter((w) => w.projectId === input.projectId)
+						.map((w) => w.id),
+				);
+
+				// Find a window that has any of these workspaces open
+				for (const [windowId, windowState] of Object.entries(windows)) {
+					const hasProjectOpen = windowState.openWorkspaceIds.some((id) =>
+						projectWorkspaceIds.has(id),
+					);
+					if (hasProjectOpen) {
+						return { windowId };
+					}
+				}
+
+				return null;
+			}),
+
+		/**
+		 * Get open workspaces for a window with full details
+		 */
+		getOpenWorkspaces: publicProcedure
+			.input(z.object({ windowId: z.string() }))
+			.query(({ input }) => {
+				const windowState = db.data.settings.windows?.[input.windowId];
+				if (!windowState) {
+					return [];
+				}
+
+				return windowState.openWorkspaceIds
+					.map((id) => {
+						const workspace = db.data.workspaces.find((w) => w.id === id);
+						if (!workspace) return null;
+
+						const project = db.data.projects.find(
+							(p) => p.id === workspace.projectId,
+						);
+						const worktree = db.data.worktrees.find(
+							(wt) => wt.id === workspace.worktreeId,
+						);
+
+						return {
+							...workspace,
+							worktreePath: getWorktreePath(workspace.worktreeId) ?? "",
+							project: project
+								? {
+										id: project.id,
+										name: project.name,
+										color: project.color,
+									}
+								: null,
+							worktree: worktree
+								? { branch: worktree.branch, gitStatus: worktree.gitStatus }
+								: null,
+						};
+					})
+					.filter((w): w is NonNullable<typeof w> => w !== null);
 			}),
 	});
 };

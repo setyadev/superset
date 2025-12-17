@@ -1,12 +1,11 @@
 import { Input } from "@superset/ui/input";
 import { HiOutlineFolder, HiOutlinePencilSquare } from "react-icons/hi2";
 import { LuGitBranch } from "react-icons/lu";
-import { trpc } from "renderer/lib/trpc";
+import { useActiveWorkspace } from "renderer/react-query/workspaces";
 import { useWorkspaceRename } from "renderer/screens/main/components/TopBar/WorkspaceTabs/useWorkspaceRename";
 
 export function WorkspaceSettings() {
-	const { data: activeWorkspace, isLoading } =
-		trpc.workspaces.getActive.useQuery();
+	const { data: activeWorkspace, isLoading } = useActiveWorkspace();
 
 	const rename = useWorkspaceRename(
 		activeWorkspace?.id ?? "",

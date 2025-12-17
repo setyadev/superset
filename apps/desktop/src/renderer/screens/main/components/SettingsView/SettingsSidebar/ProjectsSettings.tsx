@@ -2,7 +2,10 @@ import { cn } from "@superset/ui/utils";
 import { useEffect, useState } from "react";
 import { HiChevronDown, HiChevronRight } from "react-icons/hi2";
 import { trpc } from "renderer/lib/trpc";
-import { useSetActiveWorkspace } from "renderer/react-query/workspaces";
+import {
+	useActiveWorkspace,
+	useSetActiveWorkspace,
+} from "renderer/react-query/workspaces";
 import type { SettingsSection } from "renderer/stores";
 
 interface ProjectsSettingsProps {
@@ -15,7 +18,7 @@ export function ProjectsSettings({
 	onSectionChange,
 }: ProjectsSettingsProps) {
 	const { data: groups = [] } = trpc.workspaces.getAllGrouped.useQuery();
-	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery();
+	const { data: activeWorkspace } = useActiveWorkspace();
 	const setActiveWorkspace = useSetActiveWorkspace();
 	const [expandedProjects, setExpandedProjects] = useState<Set<string>>(
 		new Set(),

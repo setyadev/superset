@@ -14,4 +14,14 @@ export interface WindowChannels {
 		request: NoRequest;
 		response: boolean;
 	};
+
+	"window-get-id": {
+		request: NoRequest;
+		response: string;
+	};
+
+	"window-focus": {
+		request: { windowId: string };
+		response: SuccessResponse;
+	};
 }

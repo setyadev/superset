@@ -1,13 +1,14 @@
 import { useMemo } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 import { trpc } from "renderer/lib/trpc";
+import { useActiveWorkspace } from "renderer/react-query/workspaces";
 import { useWindowsStore } from "renderer/stores/tabs/store";
 import { HOTKEYS } from "shared/hotkeys";
 import { ContentView } from "./ContentView";
 import { Sidebar } from "./Sidebar";
 
 export function WorkspaceView() {
-	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery();
+	const { data: activeWorkspace } = useActiveWorkspace();
 	const activeWorkspaceId = activeWorkspace?.id;
 	const allWindows = useWindowsStore((s) => s.windows);
 	const activeWindowIds = useWindowsStore((s) => s.activeWindowIds);

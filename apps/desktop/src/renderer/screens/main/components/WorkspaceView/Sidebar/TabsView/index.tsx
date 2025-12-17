@@ -3,7 +3,7 @@ import { LayoutGroup, motion } from "framer-motion";
 import { useMemo, useRef, useState } from "react";
 import { useDrop } from "react-dnd";
 import { HiMiniPlus } from "react-icons/hi2";
-import { trpc } from "renderer/lib/trpc";
+import { useActiveWorkspace } from "renderer/react-query/workspaces";
 import { useWindowsStore } from "renderer/stores/tabs/store";
 import { WindowItem } from "./WindowItem";
 
@@ -16,7 +16,7 @@ interface DragItem {
 }
 
 export function TabsView() {
-	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery();
+	const { data: activeWorkspace } = useActiveWorkspace();
 	const activeWorkspaceId = activeWorkspace?.id;
 	const allWindows = useWindowsStore((s) => s.windows);
 	const addWindow = useWindowsStore((s) => s.addWindow);

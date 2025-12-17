@@ -71,9 +71,23 @@ export const EXTERNAL_APPS = [
 
 export type ExternalApp = (typeof EXTERNAL_APPS)[number];
 
+/**
+ * Per-window state for tracking open workspaces and active workspace
+ */
+export interface WindowState {
+	// Which workspaces are "open" (shown in tabs) - can span multiple projects
+	openWorkspaceIds: string[];
+	// Which workspace is currently active/focused (must be in openWorkspaceIds)
+	activeWorkspaceId: string | null;
+}
+
 export interface Settings {
 	lastActiveWorkspaceId?: string;
 	lastUsedApp?: ExternalApp;
+	// Per-window state tracking (electronWindowId → WindowState)
+	windows?: Record<string, WindowState>;
+	// State to restore on next app launch (saved when app closes)
+	restoreWindowState?: WindowState;
 }
 
 export interface Database {

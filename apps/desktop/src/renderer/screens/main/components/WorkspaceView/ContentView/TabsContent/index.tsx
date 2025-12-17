@@ -1,11 +1,11 @@
 import { useMemo } from "react";
-import { trpc } from "renderer/lib/trpc";
+import { useActiveWorkspace } from "renderer/react-query/workspaces";
 import { useWindowsStore } from "renderer/stores/tabs/store";
 import { EmptyTabView } from "./EmptyTabView";
 import { WindowView } from "./WindowView";
 
 export function TabsContent() {
-	const { data: activeWorkspace } = trpc.workspaces.getActive.useQuery();
+	const { data: activeWorkspace } = useActiveWorkspace();
 	const activeWorkspaceId = activeWorkspace?.id;
 	const allWindows = useWindowsStore((s) => s.windows);
 	const panes = useWindowsStore((s) => s.panes);

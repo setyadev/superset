@@ -1,9 +1,18 @@
 import { Button } from "@superset/ui/button";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { useHotkeys } from "react-hotkeys-hook";
 import { HiArrowPath } from "react-icons/hi2";
+
+// Flag set by main process for windows opened via File > New Window
+declare global {
+	interface Window {
+		__FRESH_WINDOW__?: boolean;
+	}
+}
+
 import { SetupConfigModal } from "renderer/components/SetupConfigModal";
+import { useWindowId } from "renderer/contexts/WindowIdContext";
 import { trpc } from "renderer/lib/trpc";
 import { useCurrentView, useOpenSettings } from "renderer/stores/app-state";
 import { useSidebarStore } from "renderer/stores/sidebar-state";
@@ -29,13 +38,24 @@ export function MainScreen() {
 	const currentView = useCurrentView();
 	const openSettings = useOpenSettings();
 	const { toggleSidebar } = useSidebarStore();
+	const windowId = useWindowId();
+	const utils = trpc.useUtils();
+	// Query the window's state (open workspaces and active workspace)
+	const { data: windowState, isLoading: isWindowStateLoading } =
+		trpc.workspaces.getWindowState.useQuery(
+			{ windowId: windowId ?? "" },
+			{ enabled: windowId !== null },
+		);
 	const {
 		data: activeWorkspace,
 		isLoading,
 		isError,
 		failureCount,
 		refetch,
-	} = trpc.workspaces.getActive.useQuery();
+	} = trpc.workspaces.getActive.useQuery(
+		{ windowId: windowId ?? undefined },
+		{ enabled: windowId !== null },
+	);
 	const [isRetrying, setIsRetrying] = useState(false);
 	const splitPaneAuto = useWindowsStore((s) => s.splitPaneAuto);
 	const splitPaneVertical = useWindowsStore((s) => s.splitPaneVertical);
@@ -43,8 +63,65 @@ export function MainScreen() {
 	const activeWindowIds = useWindowsStore((s) => s.activeWindowIds);
 	const focusedPaneIds = useWindowsStore((s) => s.focusedPaneIds);
 
+	// Restoration mutation
+	const restoreState = trpc.workspaces.restoreWindowState.useMutation({
+		onSuccess: (result) => {
+			if (result.restored && windowId) {
+				// Invalidate queries to show restored state
+				utils.workspaces.getWindowState.invalidate({ windowId });
+				utils.workspaces.getOpenWorkspaces.invalidate({ windowId });
+				utils.workspaces.getActive.invalidate({ windowId });
+			}
+		},
+	});
+
+	// Save state mutation (for window close)
+	const saveState = trpc.workspaces.saveRestoreState.useMutation();
+
+	// Track if we've attempted restoration
+	const hasAttemptedRestore = useRef(false);
+	// Track if this is a fresh window (via File > New Window)
+	const isFreshWindowRef = useRef(window.__FRESH_WINDOW__ ?? false);
+
 	// Listen for agent completion hooks from main process
 	useAgentHookListener();
+
+	// Attempt to restore state on first load (only for non-fresh windows)
+	useEffect(() => {
+		if (
+			windowId &&
+			!hasAttemptedRestore.current &&
+			!isWindowStateLoading &&
+			windowState?.openWorkspaceIds.length === 0 &&
+			!isFreshWindowRef.current
+		) {
+			hasAttemptedRestore.current = true;
+			restoreState.mutate({ windowId });
+		}
+		// Clear fresh window flag after first check
+		if (window.__FRESH_WINDOW__) {
+			delete window.__FRESH_WINDOW__;
+		}
+	}, [windowId, isWindowStateLoading, windowState, restoreState]);
+
+	// Save state when window is about to close
+	useEffect(() => {
+		const handleBeforeUnload = () => {
+			if (windowId && windowState && windowState.openWorkspaceIds.length > 0) {
+				// Use sendBeacon or sync approach since mutation may not complete
+				saveState.mutate({ windowId });
+			}
+		};
+
+		window.addEventListener("beforeunload", handleBeforeUnload);
+		return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+	}, [windowId, windowState, saveState]);
+
+	// Fresh window detection: window has no open workspaces and is marked as fresh
+	const isFreshWindow =
+		!isWindowStateLoading &&
+		windowState?.openWorkspaceIds.length === 0 &&
+		(isFreshWindowRef.current || hasAttemptedRestore.current);
 
 	const activeWorkspaceId = activeWorkspace?.id;
 	const activeWindowId = activeWorkspaceId
@@ -84,7 +161,9 @@ export function MainScreen() {
 	}, [activeWindowId, focusedPaneId, splitPaneHorizontal, isWorkspaceView]);
 
 	const showStartView =
-		!isLoading && !activeWorkspace && currentView !== "settings";
+		!isLoading &&
+		(!activeWorkspace || isFreshWindow) &&
+		currentView !== "settings";
 
 	// Determine which content view to show
 	const renderContent = () => {
@@ -94,8 +173,8 @@ export function MainScreen() {
 		return <WorkspaceView />;
 	};
 
-	// Show loading spinner while query is in flight
-	if (isLoading) {
+	// Show loading spinner while query is in flight or waiting for windowId
+	if (isLoading || windowId === null) {
 		return (
 			<DndProvider manager={dragDropManager}>
 				<Background />

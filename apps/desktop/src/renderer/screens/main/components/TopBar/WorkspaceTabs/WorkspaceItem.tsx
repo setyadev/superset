@@ -5,6 +5,8 @@ import { cn } from "@superset/ui/utils";
 import { useState } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { HiMiniXMark } from "react-icons/hi2";
+import { useWindowId } from "renderer/contexts/WindowIdContext";
+import { trpc } from "renderer/lib/trpc";
 import {
 	useReorderWorkspaces,
 	useSetActiveWorkspace,
@@ -40,6 +42,8 @@ export function WorkspaceItem({
 	onMouseEnter,
 	onMouseLeave,
 }: WorkspaceItemProps) {
+	const windowId = useWindowId();
+	const utils = trpc.useUtils();
 	const setActive = useSetActiveWorkspace();
 	const reorderWorkspaces = useReorderWorkspaces();
 	const closeSettings = useCloseSettings();
@@ -47,6 +51,18 @@ export function WorkspaceItem({
 	const windows = useWindowsStore((s) => s.windows);
 	const panes = useWindowsStore((s) => s.panes);
 	const rename = useWorkspaceRename(id, title);
+
+	// Close workspace from window (not delete)
+	const closeInWindow = trpc.workspaces.closeInWindow.useMutation({
+		onSuccess: () => {
+			// Invalidate queries to refresh UI
+			if (windowId) {
+				utils.workspaces.getOpenWorkspaces.invalidate({ windowId });
+				utils.workspaces.getWindowState.invalidate({ windowId });
+				utils.workspaces.getActive.invalidate({ windowId });
+			}
+		},
+	});
 
 	// Check if any pane in windows belonging to this workspace needs attention
 	const workspaceWindows = windows.filter((w) => w.workspaceId === id);
@@ -107,6 +123,7 @@ export function WorkspaceItem({
 			<WorkspaceItemContextMenu
 				worktreePath={worktreePath}
 				onRename={rename.startRename}
+				onDelete={() => setShowDeleteDialog(true)}
 			>
 				<div
 					className="group relative flex items-end shrink-0 h-full no-drag"
@@ -181,19 +198,21 @@ export function WorkspaceItem({
 								size="icon"
 								onClick={(e) => {
 									e.stopPropagation();
-									setShowDeleteDialog(true);
+									if (windowId) {
+										closeInWindow.mutate({ windowId, workspaceId: id });
+									}
 								}}
 								className={cn(
 									"mt-1 absolute right-1 top-1/2 -translate-y-1/2 cursor-pointer size-5 group-hover:opacity-100",
 									isActive ? "opacity-90" : "opacity-0",
 								)}
-								aria-label="Delete workspace"
+								aria-label="Close workspace"
 							>
 								<HiMiniXMark />
 							</Button>
 						</TooltipTrigger>
 						<TooltipContent side="bottom" showArrow={false}>
-							Delete workspace
+							Close workspace
 						</TooltipContent>
 					</Tooltip>
 				</div>

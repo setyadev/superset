@@ -1,10 +1,10 @@
 import { HiOutlineCog6Tooth, HiOutlineFolder } from "react-icons/hi2";
 import { ConfigFilePreview } from "renderer/components/ConfigFilePreview";
 import { trpc } from "renderer/lib/trpc";
+import { useActiveWorkspace } from "renderer/react-query/workspaces";
 
 export function ProjectSettings() {
-	const { data: activeWorkspace, isLoading } =
-		trpc.workspaces.getActive.useQuery();
+	const { data: activeWorkspace, isLoading } = useActiveWorkspace();
 
 	const { data: configFilePath } = trpc.config.getConfigFilePath.useQuery(
 		{ projectId: activeWorkspace?.projectId ?? "" },
