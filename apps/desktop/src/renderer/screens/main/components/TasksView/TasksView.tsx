@@ -28,7 +28,9 @@ import {
 	HiPencil,
 	HiUser,
 } from "react-icons/hi2";
+import { OrganizationsProvider } from "renderer/contexts/OrganizationsProvider";
 import {
+	PGliteProvider,
 	type SelectTask,
 	type TaskPriority,
 	useTasks,
@@ -310,7 +312,7 @@ function Sidebar() {
 	);
 }
 
-export function TasksView() {
+function TasksViewContent() {
 	return (
 		<div className="flex flex-1 min-h-0 bg-background">
 			<Sidebar />
@@ -323,5 +325,15 @@ export function TasksView() {
 				</ScrollArea>
 			</div>
 		</div>
+	);
+}
+
+export function TasksView() {
+	return (
+		<OrganizationsProvider>
+			<PGliteProvider>
+				<TasksViewContent />
+			</PGliteProvider>
+		</OrganizationsProvider>
 	);
 }

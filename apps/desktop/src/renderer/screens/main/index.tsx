@@ -1,5 +1,6 @@
 import { FEATURE_FLAGS } from "@superset/shared/constants";
 import { Button } from "@superset/ui/button";
+import { useFeatureFlagEnabled } from "posthog-js/react";
 import { useCallback, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { useHotkeys } from "react-hotkeys-hook";
@@ -7,7 +8,6 @@ import { HiArrowPath } from "react-icons/hi2";
 import { NewWorkspaceModal } from "renderer/components/NewWorkspaceModal";
 import { SetupConfigModal } from "renderer/components/SetupConfigModal";
 import { useUpdateListener } from "renderer/components/UpdateToast";
-import { posthog } from "renderer/lib/posthog";
 import { trpc } from "renderer/lib/trpc";
 import { SignInScreen } from "renderer/screens/sign-in";
 import { useCurrentView, useOpenSettings } from "renderer/stores/app-state";
@@ -48,6 +48,9 @@ export function MainScreen() {
 	const currentView = useCurrentView();
 	const openSettings = useOpenSettings();
 	const { toggleSidebar } = useSidebarStore();
+	const hasTasksAccess = useFeatureFlagEnabled(
+		FEATURE_FLAGS.ELECTRIC_TASKS_ACCESS,
+	);
 	const {
 		data: activeWorkspace,
 		isLoading: isWorkspaceLoading,
@@ -194,10 +197,7 @@ export function MainScreen() {
 		if (currentView === "settings") {
 			return <SettingsView />;
 		}
-		if (
-			currentView === "tasks" &&
-			posthog.isFeatureEnabled(FEATURE_FLAGS.ELECTRIC_TASKS_ACCESS)
-		) {
+		if (currentView === "tasks" && hasTasksAccess) {
 			return <TasksView />;
 		}
 		return <WorkspaceView />;

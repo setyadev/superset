@@ -12,6 +12,7 @@ import {
 } from "@superset/ui/dropdown-menu";
 import { Kbd, KbdGroup } from "@superset/ui/kbd";
 import { toast } from "@superset/ui/sonner";
+import { useFeatureFlagEnabled } from "posthog-js/react";
 import { FaDiscord, FaXTwitter } from "react-icons/fa6";
 import {
 	HiOutlineArrowRightOnRectangle,
@@ -22,7 +23,6 @@ import {
 	HiOutlineEnvelope,
 } from "react-icons/hi2";
 import { LuLifeBuoy } from "react-icons/lu";
-import { posthog } from "renderer/lib/posthog";
 import { trpc } from "renderer/lib/trpc";
 import { useOpenSettings, useOpenTasks } from "renderer/stores";
 import { HOTKEYS } from "shared/hotkeys";
@@ -31,7 +31,7 @@ export function AvatarDropdown() {
 	const { data: user } = trpc.user.me.useQuery();
 	const openSettings = useOpenSettings();
 	const openTasks = useOpenTasks();
-	const hasTasksAccess = posthog.isFeatureEnabled(
+	const hasTasksAccess = useFeatureFlagEnabled(
 		FEATURE_FLAGS.ELECTRIC_TASKS_ACCESS,
 	);
 	const signOutMutation = trpc.auth.signOut.useMutation({
