@@ -65,10 +65,11 @@ export function useWorkspaceShortcuts() {
 	// Flatten workspaces for keyboard navigation
 	const allWorkspaces = groups.flatMap((group) => group.workspaces);
 
-	// Workspace switching shortcuts (⌘+1-9)
+	// Workspace switching shortcuts (⌘/Ctrl+1-9)
+	// Using "mod" maps to Cmd on macOS and Ctrl on Windows/Linux
 	const workspaceKeys = Array.from(
 		{ length: 9 },
-		(_, i) => `meta+${i + 1}`,
+		(_, i) => `mod+${i + 1}`,
 	).join(", ");
 
 	const handleWorkspaceSwitch = useCallback(

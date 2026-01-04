@@ -44,11 +44,11 @@ function isPathWithinWorktree(
 	// - "../" prefix means ancestor escape (use sep for cross-platform)
 	// - Absolute path means completely outside
 	// Note: Don't use startsWith("..") as it incorrectly catches "..config" directories
+	// Note: Empty relativePath ("") case is already handled by the equality check above
 	const escapesWorktree =
 		relativePath === ".." ||
 		relativePath.startsWith(`..${sep}`) ||
-		isAbsolute(relativePath) ||
-		relativePath === "";
+		isAbsolute(relativePath);
 
 	return !escapesWorktree;
 }

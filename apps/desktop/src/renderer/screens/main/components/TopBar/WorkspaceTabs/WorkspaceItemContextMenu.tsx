@@ -40,7 +40,9 @@ export function WorkspaceItemContextMenu({
 	const openInFinder = trpc.external.openInFinder.useMutation();
 	const setUnread = trpc.workspaces.setUnread.useMutation({
 		onSuccess: () => {
+			// Invalidate both queries that return isUnread state
 			utils.workspaces.getAllGrouped.invalidate();
+			utils.workspaces.getActive.invalidate();
 		},
 	});
 

@@ -46,12 +46,10 @@ export async function gitSwitchBranch(
 		// Prefer `git switch` - unambiguous branch operation (git 2.23+)
 		await git.raw(["switch", branch]);
 	} catch (switchError) {
-		// Check if it's because `switch` command doesn't exist (old git)
+		// Check if it's because `switch` command doesn't exist (old git < 2.23)
+		// Git outputs: "git: 'switch' is not a git command. See 'git --help'."
 		const errorMessage = String(switchError);
-		if (
-			errorMessage.includes("is not a git command") ||
-			errorMessage.includes("unknown switch")
-		) {
+		if (errorMessage.includes("is not a git command")) {
 			// Fallback for older git versions
 			// Note: checkout WITHOUT -- is correct for branches
 			await git.checkout(branch);
