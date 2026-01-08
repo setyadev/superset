@@ -408,7 +408,7 @@ export const createTerminalRouter = () => {
 						if (DEBUG_TERMINAL && !firstDataReceived) {
 							firstDataReceived = true;
 							console.log(
-								`[Terminal Stream] First data for ${paneId}: ${data.length} bytes`,
+								`[Terminal Stream] First data event for ${paneId}: ${data.length} bytes`,
 							);
 						}
 						emit.next({ type: "data", data });

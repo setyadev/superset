@@ -37,6 +37,12 @@ import {
 
 const FIRST_RENDER_RESTORE_FALLBACK_MS = 250;
 
+// Debug logging for terminal lifecycle (enable via localStorage)
+// Run in DevTools console: localStorage.setItem('SUPERSET_TERMINAL_DEBUG', '1')
+const DEBUG_TERMINAL =
+	typeof localStorage !== "undefined" &&
+	localStorage.getItem("SUPERSET_TERMINAL_DEBUG") === "1";
+
 // Module-level map to track pending detach timeouts.
 // This survives React StrictMode's unmount/remount cycle, allowing us to
 // cancel a pending detach if the component immediately remounts.
@@ -492,6 +498,11 @@ export const Terminal = ({
 
 					// NOW safe to enable streaming and flush pending events
 					isStreamReadyRef.current = true;
+					if (DEBUG_TERMINAL) {
+						console.log(
+							`[Terminal] isStreamReady=true (altScreen): ${paneId}, pendingEvents=${pendingEventsRef.current.length}`,
+						);
+					}
 					flushPendingEvents();
 
 					// Fit xterm to container and trigger SIGWINCH
@@ -577,6 +588,11 @@ export const Terminal = ({
 				// Enable streaming AFTER xterm has processed the restoration writes.
 				// This prevents live PTY output from interleaving with snapshot replay.
 				isStreamReadyRef.current = true;
+				if (DEBUG_TERMINAL) {
+					console.log(
+						`[Terminal] isStreamReady=true (finalizeRestore): ${paneId}, pendingEvents=${pendingEventsRef.current.length}`,
+					);
+				}
 				flushPendingEvents();
 			};
 
@@ -717,14 +733,28 @@ export const Terminal = ({
 		setConnectionError,
 	]);
 
+	// Track first data event for debugging
+	const firstStreamDataReceivedRef = useRef(false);
+
 	const handleStreamData = (event: TerminalStreamEvent) => {
 		// Queue events until terminal is ready to prevent data loss
 		if (!xtermRef.current || !isStreamReadyRef.current) {
+			if (DEBUG_TERMINAL && event.type === "data") {
+				console.log(
+					`[Terminal] Queuing event (not ready): ${paneId}, type=${event.type}, bytes=${event.data.length}, isStreamReady=${isStreamReadyRef.current}`,
+				);
+			}
 			pendingEventsRef.current.push(event);
 			return;
 		}
 
 		if (event.type === "data") {
+			if (DEBUG_TERMINAL && !firstStreamDataReceivedRef.current) {
+				firstStreamDataReceivedRef.current = true;
+				console.log(
+					`[Terminal] First stream data received: ${paneId}, ${event.data.length} bytes`,
+				);
+			}
 			updateModesFromDataRef.current(event.data);
 			xtermRef.current.write(event.data);
 			updateCwdFromData(event.data);
@@ -817,6 +847,10 @@ export const Terminal = ({
 	useEffect(() => {
 		const container = terminalRef.current;
 		if (!container) return;
+
+		if (DEBUG_TERMINAL) {
+			console.log(`[Terminal] Mount: ${paneId}`);
+		}
 
 		// Cancel any pending detach from a previous unmount (e.g., React StrictMode's
 		// simulated unmount/remount cycle). This prevents the detach from corrupting
@@ -981,6 +1015,10 @@ export const Terminal = ({
 			paneId,
 			priority: isTabVisible ? (isFocusedRef.current ? 0 : 1) : 2,
 			run: (done) => {
+				if (DEBUG_TERMINAL) {
+					console.log(`[Terminal] createOrAttach start: ${paneId}`);
+				}
+				const createOrAttachStartTime = Date.now();
 				createOrAttachRef.current(
 					{
 						paneId,
@@ -993,6 +1031,17 @@ export const Terminal = ({
 					},
 					{
 						onSuccess: (result) => {
+							if (DEBUG_TERMINAL) {
+								console.log(
+									`[Terminal] createOrAttach success: ${paneId} (${Date.now() - createOrAttachStartTime}ms)`,
+									{
+										isNew: result.isNew,
+										wasRecovered: result.wasRecovered,
+										isColdRestore: result.isColdRestore,
+										snapshotBytes: result.snapshot?.snapshotAnsi?.length ?? 0,
+									},
+								);
+							}
 							// Clear after successful creation to prevent re-running on future reattach
 							if (initialCommands || initialCwd) {
 								clearPaneInitialDataRef.current(paneId);
@@ -1046,6 +1095,12 @@ export const Terminal = ({
 							maybeApplyInitialState();
 						},
 						onError: (error) => {
+							if (DEBUG_TERMINAL) {
+								console.log(
+									`[Terminal] createOrAttach error: ${paneId}`,
+									error.message,
+								);
+							}
 							console.error("[Terminal] Failed to create/attach:", error);
 							setConnectionError(
 								error.message || "Failed to connect to terminal",
@@ -1121,8 +1176,12 @@ export const Terminal = ({
 		});
 
 		return () => {
+			if (DEBUG_TERMINAL) {
+				console.log(`[Terminal] Unmount: ${paneId}`);
+			}
 			cancelInitialAttach();
 			isUnmounted = true;
+			firstStreamDataReceivedRef.current = false;
 			if (firstRenderFallback) {
 				clearTimeout(firstRenderFallback);
 			}
