@@ -8,7 +8,6 @@ import {
 	DaemonTerminalManager,
 	getActiveTerminalManager,
 } from "main/lib/terminal";
-import { getTerminalHistoryRootDir } from "main/lib/terminal-history";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 import { assertWorkspaceUsable } from "../workspaces/utils/usability";
@@ -296,9 +295,8 @@ export const createTerminalRouter = () => {
 			}),
 
 		clearTerminalHistory: publicProcedure.mutation(async () => {
-			const historyRoot = getTerminalHistoryRootDir();
-			await fs.rm(historyRoot, { recursive: true, force: true });
-
+			// Note: Disk-based terminal history was removed. This is now a no-op
+			// for non-daemon mode. In daemon mode, it resets the history persistence.
 			if (terminalManager instanceof DaemonTerminalManager) {
 				await terminalManager.resetHistoryPersistence();
 			}
