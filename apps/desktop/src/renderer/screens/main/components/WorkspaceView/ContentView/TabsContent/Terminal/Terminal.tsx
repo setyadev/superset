@@ -142,6 +142,12 @@ export const Terminal = ({
 		},
 	} = useTerminalConnection({ workspaceId });
 
+	// Avoid effect re-runs: track overlay states via refs for input gating.
+	const isRestoredModeRef = useRef(isRestoredMode);
+	isRestoredModeRef.current = isRestoredMode;
+	const connectionErrorRef = useRef(connectionError);
+	connectionErrorRef.current = connectionError;
+
 	// Ref for initial theme to avoid recreating terminal on theme change
 	const initialThemeRef = useRef(terminalTheme);
 
@@ -741,9 +747,13 @@ export const Terminal = ({
 		const fitAddon = fitAddonRef.current;
 		if (!xterm || !fitAddon) return;
 
-		// Clear restored mode (both React state and module-level map)
-		setIsRestoredMode(false);
-		coldRestoreState.delete(paneId);
+		// Keep the overlay up while we create the new session; clear it on success.
+
+		// Drop any queued events from the pre-restore session. In cold restore mode
+		// streaming is intentionally paused, so stale `exit` events can accumulate.
+		// If we replay them after starting a new shell, the terminal gets marked as
+		// exited and future input triggers an unintended restart (which clears the UI).
+		pendingEventsRef.current = [];
 
 		// Acknowledge cold restore to main process (clears sticky state)
 		trpcClient.terminal.ackColdRestore.mutate({ paneId }).catch((error) => {
@@ -758,6 +768,7 @@ export const Terminal = ({
 
 		// Reset state for new session
 		isStreamReadyRef.current = false;
+		isExitedRef.current = false; // Critical: reset so handleTerminalInput writes to shell
 		pendingInitialStateRef.current = null;
 		isAlternateScreenRef.current = false;
 		isBracketedPasteRef.current = false;
@@ -779,15 +790,26 @@ export const Terminal = ({
 					pendingInitialStateRef.current = result;
 					maybeApplyInitialState();
 
-					// Focus terminal after starting new shell
-					const currentXterm = xtermRef.current;
-					if (currentXterm && isFocusedRef.current) {
-						currentXterm.focus();
-					}
+					// Clear restored mode AFTER session is ready so the overlay doesn't
+					// disappear until we have a live session to show.
+					setIsRestoredMode(false);
+					coldRestoreState.delete(paneId);
+
+					// Always focus terminal after Start Shell - user explicitly clicked to start
+					// Use setTimeout to ensure DOM is ready after overlay removal
+					setTimeout(() => {
+						const currentXterm = xtermRef.current;
+						if (currentXterm) {
+							currentXterm.focus();
+						}
+					}, 0);
 				},
 				onError: (error) => {
 					console.error("[Terminal] Failed to start shell:", error);
 					setConnectionError(error.message || "Failed to start shell");
+					// Clear restored mode on error too so user can retry
+					setIsRestoredMode(false);
+					coldRestoreState.delete(paneId);
 					isStreamReadyRef.current = true;
 					flushPendingEvents();
 				},
@@ -800,6 +822,7 @@ export const Terminal = ({
 		maybeApplyInitialState,
 		flushPendingEvents,
 		setConnectionError,
+		setIsRestoredMode,
 	]);
 
 	// Track first data event for debugging
@@ -1050,6 +1073,12 @@ export const Terminal = ({
 		};
 
 		const handleTerminalInput = (data: string) => {
+			// When overlays are visible, ignore input completely:
+			// - Cold restore overlay: no live session yet
+			// - Connection error overlay: daemon may be unavailable
+			if (isRestoredModeRef.current || connectionErrorRef.current) {
+				return;
+			}
 			if (isExitedRef.current) {
 				restartTerminal();
 				return;
@@ -1061,6 +1090,10 @@ export const Terminal = ({
 			key: string;
 			domEvent: KeyboardEvent;
 		}) => {
+			// Don't treat overlay interactions as terminal typing.
+			if (isRestoredModeRef.current || connectionErrorRef.current) {
+				return;
+			}
 			const { domEvent } = event;
 			if (domEvent.key === "Enter") {
 				// Don't auto-title from keyboard when in alternate screen (TUI apps like vim, codex)
