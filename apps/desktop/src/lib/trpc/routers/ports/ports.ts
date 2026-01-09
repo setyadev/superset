@@ -19,12 +19,10 @@ type PortEvent =
 
 export const createPortsRouter = () => {
 	return router({
-		// Get all currently detected ports
 		getAll: publicProcedure.query(() => {
 			return portManager.getAllPorts();
 		}),
 
-		// Subscribe to port changes (add/remove events)
 		subscribe: publicProcedure.subscription(() => {
 			return observable<PortEvent>((emit) => {
 				const onAdd = (port: DetectedPort) => {
@@ -45,7 +43,6 @@ export const createPortsRouter = () => {
 			});
 		}),
 
-		// Check if a workspace has a static ports configuration file
 		hasStaticConfig: publicProcedure
 			.input(z.object({ workspaceId: z.string() }))
 			.query(({ input }): { hasStatic: boolean } => {
@@ -67,7 +64,6 @@ export const createPortsRouter = () => {
 				return { hasStatic: hasStaticPortsConfig(workspacePath) };
 			}),
 
-		// Get static ports from the workspace's ports.json file
 		getStatic: publicProcedure
 			.input(z.object({ workspaceId: z.string() }))
 			.query(
@@ -108,7 +104,41 @@ export const createPortsRouter = () => {
 				},
 			),
 
-		// Subscribe to static ports file changes for a workspace
+		getAllStatic: publicProcedure.query(
+			(): {
+				ports: StaticPort[];
+				errors: Array<{ workspaceId: string; error: string }>;
+			} => {
+				const allWorkspaces = localDb.select().from(workspaces).all();
+				const allPorts: StaticPort[] = [];
+				const errors: Array<{ workspaceId: string; error: string }> = [];
+
+				for (const workspace of allWorkspaces) {
+					const workspacePath = getWorkspacePath(workspace);
+					if (!workspacePath) continue;
+
+					const result = loadStaticPorts(workspacePath);
+
+					if (!result.exists) continue;
+
+					if (result.error) {
+						errors.push({ workspaceId: workspace.id, error: result.error });
+						continue;
+					}
+
+					if (result.ports) {
+						const portsWithWorkspace = result.ports.map((p) => ({
+							...p,
+							workspaceId: workspace.id,
+						}));
+						allPorts.push(...portsWithWorkspace);
+					}
+				}
+
+				return { ports: allPorts, errors };
+			},
+		),
+
 		subscribeStatic: publicProcedure
 			.input(z.object({ workspaceId: z.string() }))
 			.subscription(({ input }) => {

@@ -19,3 +19,15 @@ export interface StaticPortsResult {
 	ports: Omit<StaticPort, "workspaceId">[] | null;
 	error: string | null;
 }
+
+export interface MergedPort {
+	port: number;
+	workspaceId: string;
+	label: string | null;
+	isActive: boolean;
+	pid: number | null;
+	processName: string | null;
+	paneId: string | null;
+	address: string | null;
+	detectedAt: number | null;
+}

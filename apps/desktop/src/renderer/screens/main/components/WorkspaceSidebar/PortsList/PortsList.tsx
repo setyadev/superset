@@ -1,18 +1,18 @@
 import { toast } from "@superset/ui/sonner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useEffect, useMemo, useRef } from "react";
-import { LuChevronRight, LuExternalLink, LuRadioTower } from "react-icons/lu";
+import { LuChevronRight, LuRadioTower } from "react-icons/lu";
 import { trpc } from "renderer/lib/trpc";
-import { type DetectedPort, usePortsStore } from "renderer/stores";
-import { useTabsStore } from "renderer/stores/tabs/store";
-import type { StaticPort } from "shared/types";
+import { usePortsStore } from "renderer/stores";
+import type { MergedPort } from "shared/types";
 import { STROKE_WIDTH } from "../constants";
+import { MergedPortBadge } from "./components/MergedPortBadge";
+import { mergePorts } from "./utils";
 
-interface WorkspaceGroup {
+interface MergedWorkspaceGroup {
 	workspaceId: string;
 	workspaceName: string;
 	isCurrentWorkspace: boolean;
-	ports: DetectedPort[];
+	ports: MergedPort[];
 }
 
 export function PortsList() {
@@ -27,70 +27,34 @@ export function PortsList() {
 
 	const utils = trpc.useUtils();
 
-	// Check if the active workspace has static ports config
-	const { data: staticConfigCheck } = trpc.ports.hasStaticConfig.useQuery(
-		{ workspaceId: activeWorkspace?.id ?? "" },
-		{ enabled: !!activeWorkspace?.id },
-	);
+	// Fetch static ports for all workspaces
+	const { data: allStaticPortsData } = trpc.ports.getAllStatic.useQuery();
 
-	const useStaticPorts = staticConfigCheck?.hasStatic ?? false;
-
-	// Fetch static ports if config exists
-	const { data: staticPortsData } = trpc.ports.getStatic.useQuery(
-		{ workspaceId: activeWorkspace?.id ?? "" },
-		{ enabled: useStaticPorts && !!activeWorkspace?.id },
-	);
-
-	// Subscribe to static ports file changes (always enabled to detect file creation)
+	// Subscribe to static ports file changes for active workspace
+	// (triggers refetch of all static ports when file changes)
 	trpc.ports.subscribeStatic.useSubscription(
 		{ workspaceId: activeWorkspace?.id ?? "" },
 		{
 			enabled: !!activeWorkspace?.id,
 			onData: () => {
-				// Invalidate queries to refetch the latest data
-				utils.ports.hasStaticConfig.invalidate({
-					workspaceId: activeWorkspace?.id ?? "",
-				});
-				utils.ports.getStatic.invalidate({
-					workspaceId: activeWorkspace?.id ?? "",
-				});
+				// Invalidate to refetch all static ports
+				utils.ports.getAllStatic.invalidate();
 			},
 		},
 	);
 
-	// Track if we've shown the error toast for this error
-	const lastErrorRef = useRef<string | null>(null);
-
-	// Show toast error for static ports if there's an error
-	useEffect(() => {
-		if (
-			staticPortsData?.error &&
-			staticPortsData.error !== lastErrorRef.current
-		) {
-			lastErrorRef.current = staticPortsData.error;
-			toast.error("Failed to load ports.json", {
-				description: staticPortsData.error,
-			});
-		} else if (!staticPortsData?.error) {
-			lastErrorRef.current = null;
-		}
-	}, [staticPortsData?.error]);
-
-	// Fetch initial dynamic ports (only when not using static)
-	const { data: initialPorts } = trpc.ports.getAll.useQuery(undefined, {
-		enabled: !useStaticPorts,
-	});
+	// Fetch initial dynamic ports
+	const { data: initialPorts } = trpc.ports.getAll.useQuery();
 
 	// Set initial dynamic ports when they load
 	useEffect(() => {
-		if (initialPorts && !useStaticPorts) {
+		if (initialPorts) {
 			setPorts(initialPorts);
 		}
-	}, [initialPorts, setPorts, useStaticPorts]);
+	}, [initialPorts, setPorts]);
 
-	// Subscribe to dynamic port changes (only when not using static)
+	// Subscribe to dynamic port changes
 	trpc.ports.subscribe.useSubscription(undefined, {
-		enabled: !useStaticPorts,
 		onData: (event) => {
 			if (event.type === "add") {
 				addPort(event.port);
@@ -112,51 +76,88 @@ export function PortsList() {
 		);
 	}, [allWorkspaces]);
 
-	// Get static ports for display
-	const staticPorts = useMemo(() => {
-		if (!useStaticPorts || !staticPortsData?.ports) return [];
-		return staticPortsData.ports.sort((a, b) => a.port - b.port);
-	}, [useStaticPorts, staticPortsData?.ports]);
+	// Track which errors we've shown toasts for
+	const shownErrorsRef = useRef<Set<string>>(new Set());
 
-	// Group dynamic ports by workspace, sorted with current workspace first
-	const groupedPorts = useMemo(() => {
-		if (useStaticPorts) return [];
-
-		const groups: Record<string, DetectedPort[]> = {};
-
-		for (const port of ports) {
-			if (!groups[port.workspaceId]) {
-				groups[port.workspaceId] = [];
+	// Show toast errors for any static port loading errors
+	useEffect(() => {
+		const errors = allStaticPortsData?.errors ?? [];
+		for (const { workspaceId, error } of errors) {
+			const errorKey = `${workspaceId}:${error}`;
+			if (!shownErrorsRef.current.has(errorKey)) {
+				shownErrorsRef.current.add(errorKey);
+				const workspaceName =
+					workspaceNames[workspaceId] || "Unknown workspace";
+				toast.error(`Failed to load ports.json in ${workspaceName}`, {
+					description: error,
+				});
 			}
-			groups[port.workspaceId].push(port);
+		}
+	}, [allStaticPortsData?.errors, workspaceNames]);
+
+	// Get all workspace IDs that have either static or dynamic ports
+	const allWorkspaceIds = useMemo(() => {
+		const ids = new Set<string>();
+
+		// Add workspaces with static ports
+		for (const port of allStaticPortsData?.ports ?? []) {
+			ids.add(port.workspaceId);
 		}
 
-		// Sort ports within each group by port number
-		for (const workspaceId of Object.keys(groups)) {
-			groups[workspaceId].sort((a, b) => a.port - b.port);
+		// Add workspaces with dynamic ports
+		for (const port of ports) {
+			ids.add(port.workspaceId);
 		}
 
-		// Convert to array and sort groups (current workspace first)
-		const result: WorkspaceGroup[] = Object.entries(groups).map(
-			([workspaceId, workspacePorts]) => ({
+		return Array.from(ids);
+	}, [allStaticPortsData?.ports, ports]);
+
+	// Merge static + dynamic ports for ALL workspaces, grouped
+	const workspacePortGroups = useMemo(() => {
+		const allStaticPorts = allStaticPortsData?.ports ?? [];
+
+		const groups = allWorkspaceIds.map((workspaceId) => {
+			// Get static ports for this workspace
+			const staticPortsForWorkspace = allStaticPorts.filter(
+				(p) => p.workspaceId === workspaceId,
+			);
+
+			// Merge with dynamic ports
+			const merged = mergePorts({
+				staticPorts: staticPortsForWorkspace,
+				dynamicPorts: ports,
+				workspaceId,
+			});
+
+			return {
 				workspaceId,
 				workspaceName: workspaceNames[workspaceId] || "Unknown",
 				isCurrentWorkspace: workspaceId === activeWorkspace?.id,
-				ports: workspacePorts,
-			}),
-		);
+				ports: merged,
+			};
+		});
 
-		result.sort((a, b) => {
+		// Sort: current workspace first, then alphabetically
+		groups.sort((a, b) => {
 			if (a.isCurrentWorkspace && !b.isCurrentWorkspace) return -1;
 			if (!a.isCurrentWorkspace && b.isCurrentWorkspace) return 1;
 			return a.workspaceName.localeCompare(b.workspaceName);
 		});
 
-		return result;
-	}, [ports, activeWorkspace?.id, workspaceNames, useStaticPorts]);
+		return groups;
+	}, [
+		allWorkspaceIds,
+		allStaticPortsData?.ports,
+		ports,
+		workspaceNames,
+		activeWorkspace?.id,
+	]);
 
 	// Calculate total port count for display
-	const totalPortCount = useStaticPorts ? staticPorts.length : ports.length;
+	const totalPortCount = workspacePortGroups.reduce(
+		(sum, g) => sum + g.ports.length,
+		0,
+	);
 
 	// Don't render if there are no ports (static or dynamic)
 	if (totalPortCount === 0) {
@@ -183,30 +184,20 @@ export function PortsList() {
 			</button>
 			{!isCollapsed && (
 				<div className="space-y-2">
-					{useStaticPorts ? (
-						// Static ports - just show a flat list for the current workspace
-						<div className="flex flex-wrap gap-1 px-3">
-							{staticPorts.map((port) => (
-								<StaticPortBadge key={port.port} port={port} />
-							))}
-						</div>
-					) : (
-						// Dynamic ports - grouped by workspace
-						groupedPorts.map((group) => (
-							<WorkspacePortGroup key={group.workspaceId} group={group} />
-						))
-					)}
+					{workspacePortGroups.map((group) => (
+						<MergedWorkspacePortGroup key={group.workspaceId} group={group} />
+					))}
 				</div>
 			)}
 		</div>
 	);
 }
 
-interface WorkspacePortGroupProps {
-	group: WorkspaceGroup;
+interface MergedWorkspacePortGroupProps {
+	group: MergedWorkspaceGroup;
 }
 
-function WorkspacePortGroup({ group }: WorkspacePortGroupProps) {
+function MergedWorkspacePortGroup({ group }: MergedWorkspacePortGroupProps) {
 	const setActiveMutation = trpc.workspaces.setActive.useMutation();
 	const utils = trpc.useUtils();
 
@@ -233,121 +224,13 @@ function WorkspacePortGroup({ group }: WorkspacePortGroupProps) {
 			</button>
 			<div className="flex flex-wrap gap-1 px-3">
 				{group.ports.map((port) => (
-					<PortBadge
-						key={`${port.paneId}:${port.port}`}
+					<MergedPortBadge
+						key={port.port}
 						port={port}
 						isCurrentWorkspace={group.isCurrentWorkspace}
 					/>
 				))}
 			</div>
 		</div>
-	);
-}
-
-interface PortBadgeProps {
-	port: DetectedPort;
-	isCurrentWorkspace: boolean;
-}
-
-function PortBadge({ port, isCurrentWorkspace }: PortBadgeProps) {
-	const setActiveTab = useTabsStore((s) => s.setActiveTab);
-	const setFocusedPane = useTabsStore((s) => s.setFocusedPane);
-	const setActiveMutation = trpc.workspaces.setActive.useMutation();
-	const utils = trpc.useUtils();
-
-	const handleClick = async () => {
-		// If not in current workspace, switch to it first
-		if (!isCurrentWorkspace) {
-			await setActiveMutation.mutateAsync({ id: port.workspaceId });
-			await utils.workspaces.getActive.invalidate();
-		}
-
-		// Look up pane after potential workspace switch
-		const pane = useTabsStore.getState().panes[port.paneId];
-		if (!pane) return;
-
-		// Set the tab as active for this workspace
-		setActiveTab(port.workspaceId, pane.tabId);
-
-		// Focus the specific pane
-		setFocusedPane(pane.tabId, port.paneId);
-	};
-
-	const handleOpenInBrowser = () => {
-		window.open(`http://localhost:${port.port}`, "_blank");
-	};
-
-	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<div
-					className={`group relative inline-flex items-center gap-1 rounded-md text-xs font-mono transition-colors mb-2 ${
-						isCurrentWorkspace
-							? "bg-primary/10 text-primary hover:bg-primary/20"
-							: "bg-muted/50 text-muted-foreground hover:bg-muted"
-					}`}
-				>
-					<button
-						type="button"
-						onClick={handleClick}
-						className="font-medium px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md"
-					>
-						{port.port}
-					</button>
-					<button
-						type="button"
-						onClick={handleOpenInBrowser}
-						aria-label={`Open port ${port.port} in browser`}
-						className="opacity-0 group-hover:opacity-100 pr-1.5 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none"
-					>
-						<LuExternalLink className="size-3" strokeWidth={STROKE_WIDTH} />
-					</button>
-				</div>
-			</TooltipTrigger>
-			<TooltipContent side="top" showArrow={false}>
-				<div className="text-xs space-y-1">
-					<div className="font-medium">localhost:{port.port}</div>
-					<div className="text-muted-foreground">
-						{port.processName} (pid {port.pid})
-					</div>
-					<div className="text-muted-foreground/70 text-[10px]">
-						Click to jump to terminal
-					</div>
-				</div>
-			</TooltipContent>
-		</Tooltip>
-	);
-}
-
-interface StaticPortBadgeProps {
-	port: StaticPort;
-}
-
-function StaticPortBadge({ port }: StaticPortBadgeProps) {
-	const handleOpenInBrowser = () => {
-		window.open(`http://localhost:${port.port}`, "_blank");
-	};
-
-	return (
-		<Tooltip>
-			<TooltipTrigger asChild>
-				<div className="group relative inline-flex items-center gap-1 rounded-md text-xs transition-colors mb-2 bg-primary/10 text-primary hover:bg-primary/20">
-					<span className="font-medium px-2 py-1">{port.label}</span>
-					<button
-						type="button"
-						onClick={handleOpenInBrowser}
-						aria-label={`Open ${port.label} (localhost:${port.port}) in browser`}
-						className="opacity-0 group-hover:opacity-100 pr-1.5 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none"
-					>
-						<LuExternalLink className="size-3" strokeWidth={STROKE_WIDTH} />
-					</button>
-				</div>
-			</TooltipTrigger>
-			<TooltipContent side="top" showArrow={false}>
-				<div className="text-xs">
-					<div className="font-medium font-mono">localhost:{port.port}</div>
-				</div>
-			</TooltipContent>
-		</Tooltip>
 	);
 }
