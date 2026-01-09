@@ -568,7 +568,7 @@ export class DaemonTerminalManager extends EventEmitter {
 					// Handle null scrollback (no history available).
 					// Note: empty string is valid (TUI apps in alt screen may have empty normal buffer).
 					if (rawScrollback === null) {
-						historyReader.cleanup();
+						await historyReader.cleanup();
 						// Fall through to create new session
 					} else {
 						const scrollback =
@@ -861,8 +861,8 @@ export class DaemonTerminalManager extends EventEmitter {
 		if (session?.isAlive) {
 			session.isAlive = false;
 			session.pid = null;
-			this.emit(`exit:${paneId}`, 0, "SIGTERM");
-			this.emit("terminalExit", { paneId, exitCode: 0, signal: undefined });
+			this.emit(`exit:${paneId}`, 0, 15);
+			this.emit("terminalExit", { paneId, exitCode: 0, signal: 15 });
 		}
 
 		// Unregister from port manager
@@ -1039,8 +1039,8 @@ export class DaemonTerminalManager extends EventEmitter {
 				if (session?.isAlive) {
 					session.isAlive = false;
 					session.pid = null;
-					this.emit(`exit:${paneId}`, 0, "SIGTERM");
-					this.emit("terminalExit", { paneId, exitCode: 0, signal: undefined });
+					this.emit(`exit:${paneId}`, 0, 15);
+					this.emit("terminalExit", { paneId, exitCode: 0, signal: 15 });
 				}
 
 				// Unregister from port manager
