@@ -8,10 +8,14 @@ import { smoothScrollToBottom } from "../utils";
 
 interface ScrollToBottomButtonProps {
 	terminal: Terminal | null;
+	isHovered: boolean;
 }
 
-export function ScrollToBottomButton({ terminal }: ScrollToBottomButtonProps) {
-	const [isVisible, setIsVisible] = useState(false);
+export function ScrollToBottomButton({
+	terminal,
+	isHovered,
+}: ScrollToBottomButtonProps) {
+	const [isNotAtBottom, setIsNotAtBottom] = useState(false);
 	const shortcutText = useHotkeyText("SCROLL_TO_BOTTOM");
 	const showShortcut = shortcutText !== "Unassigned";
 
@@ -19,7 +23,7 @@ export function ScrollToBottomButton({ terminal }: ScrollToBottomButtonProps) {
 		if (!terminal) return;
 		const buffer = terminal.buffer.active;
 		const isAtBottom = buffer.viewportY >= buffer.baseY;
-		setIsVisible(!isAtBottom);
+		setIsNotAtBottom(!isAtBottom);
 	}, [terminal]);
 
 	useEffect(() => {
@@ -45,6 +49,8 @@ export function ScrollToBottomButton({ terminal }: ScrollToBottomButtonProps) {
 			smoothScrollToBottom(terminal);
 		}
 	};
+
+	const isVisible = isNotAtBottom && isHovered;
 
 	return (
 		<div
