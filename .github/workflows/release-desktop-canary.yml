@@ -29,6 +29,9 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
+          # Capture build timestamp (works for both scheduled and manual runs)
+          echo "build_time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
           # Get the commit SHA of the last canary release
           LAST_CANARY_SHA=$(git rev-parse desktop-canary 2>/dev/null || echo "")
 
@@ -85,7 +88,7 @@ jobs:
           git push origin :refs/tags/desktop-canary || true
 
       - name: Create Canary Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: desktop-canary
           name: "Superset Desktop Canary"
@@ -96,7 +99,7 @@ jobs:
 
             - Commit: ${{ github.sha }}
             - Short SHA: ${{ needs.check-changes.outputs.short_sha }}
-            - Built: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+            - Built: ${{ needs.check-changes.outputs.build_time }}
 
             ⚠️ This build is for internal testing only and may be unstable.
           prerelease: true
