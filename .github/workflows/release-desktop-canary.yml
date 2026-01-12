@@ -1,0 +1,105 @@
+name: Release Desktop Canary
+
+on:
+  schedule:
+    # Every 12 hours at 6 AM and 6 PM UTC
+    - cron: "0 6,18 * * *"
+  workflow_dispatch: # Manual trigger for testing
+
+permissions:
+  contents: write
+
+jobs:
+  check-changes:
+    name: Check for changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      short_sha: ${{ steps.check.outputs.short_sha }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for changes since last canary
+        id: check
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+          # Get the commit SHA of the last canary release
+          LAST_CANARY_SHA=$(git rev-parse desktop-canary 2>/dev/null || echo "")
+
+          if [ -z "$LAST_CANARY_SHA" ]; then
+            echo "No previous canary release found, building..."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          elif [ "$LAST_CANARY_SHA" = "$(git rev-parse HEAD)" ]; then
+            echo "No changes since last canary release, skipping..."
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected since last canary, building..."
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
+    uses: ./.github/workflows/build-desktop.yml
+    with:
+      channel: canary
+      electron_builder_config: electron-builder.canary.ts
+      artifact_prefix: desktop-canary
+      artifact_retention_days: 7
+    secrets: inherit
+
+  release:
+    name: Update Canary Release
+    needs: [check-changes, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: desktop-canary-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: |
+          echo "Release artifacts:"
+          ls -la release-artifacts/
+
+      - name: Delete existing canary release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete existing release if it exists
+          gh release delete desktop-canary --yes || true
+          # Delete the tag
+          git push origin :refs/tags/desktop-canary || true
+
+      - name: Create Canary Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: desktop-canary
+          name: "Superset Desktop Canary"
+          body: |
+            **Internal Testing Build**
+
+            This is an automated canary build from `main` branch.
+
+            - Commit: ${{ github.sha }}
+            - Short SHA: ${{ needs.check-changes.outputs.short_sha }}
+            - Built: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+
+            ⚠️ This build is for internal testing only and may be unstable.
+          prerelease: true
+          files: release-artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
