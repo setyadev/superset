@@ -1,31 +1,33 @@
 import { EventEmitter } from "node:events";
 import { app, dialog } from "electron";
 import { autoUpdater } from "electron-updater";
+import { prerelease } from "semver";
 import { env } from "main/env.main";
 import { setSkipQuitConfirmation } from "main/index";
-import { prerelease } from "semver";
 import { AUTO_UPDATE_STATUS, type AutoUpdateStatus } from "shared/auto-update";
 import { PLATFORM } from "shared/constants";
 
 const UPDATE_CHECK_INTERVAL_MS = 1000 * 60 * 60 * 4; // 4 hours
 
 /**
- * Detect update channel from app version using semver.
+ * Detect if this is a prerelease build from app version using semver.
  * Versions like "0.0.53-canary" have prerelease component ["canary"].
  * Stable versions like "0.0.53" have no prerelease component.
  */
-function getUpdateChannel(): string {
+function isPrereleaseBuild(): boolean {
 	const version = app.getVersion();
 	const prereleaseComponents = prerelease(version);
-	if (prereleaseComponents && prereleaseComponents.length > 0) {
-		// Return first prerelease identifier (e.g., "canary", "beta", "alpha")
-		return String(prereleaseComponents[0]);
-	}
-	return "latest";
+	return prereleaseComponents !== null && prereleaseComponents.length > 0;
 }
 
-const UPDATE_CHANNEL = getUpdateChannel();
-const IS_PRERELEASE = UPDATE_CHANNEL !== "latest";
+const IS_PRERELEASE = isPrereleaseBuild();
+
+// Use explicit feed URLs to ensure we always fetch latest-mac.yml from the correct release
+// - Stable: fetches from /releases/latest/download/ (latest non-prerelease)
+// - Canary: fetches from /releases/download/desktop-canary/ (rolling canary tag)
+const UPDATE_FEED_URL = IS_PRERELEASE
+	? "https://github.com/superset-sh/superset/releases/download/desktop-canary"
+	: "https://github.com/superset-sh/superset/releases/latest/download";
 
 export interface AutoUpdateStatusEvent {
 	status: AutoUpdateStatus;
@@ -167,15 +169,18 @@ export function setupAutoUpdater(): void {
 	autoUpdater.autoDownload = true;
 	autoUpdater.autoInstallOnAppQuit = true;
 
-	// Set update channel based on version (e.g., "canary" for 0.0.53-canary, "latest" for 0.0.53)
-	// This determines which manifest file to check (canary-mac.yml vs latest-mac.yml)
-	autoUpdater.channel = UPDATE_CHANNEL;
-
 	// Allow downgrade for prerelease builds so users can switch back to stable
 	autoUpdater.allowDowngrade = IS_PRERELEASE;
 
+	// Use generic provider with explicit feed URL
+	// This ensures we always fetch latest-mac.yml from the correct GitHub release
+	autoUpdater.setFeedURL({
+		provider: "generic",
+		url: UPDATE_FEED_URL,
+	});
+
 	console.info(
-		`[auto-updater] Configured for channel: ${UPDATE_CHANNEL}, allowDowngrade: ${IS_PRERELEASE}`,
+		`[auto-updater] Configured with feed URL: ${UPDATE_FEED_URL}, allowDowngrade: ${IS_PRERELEASE}`,
 	);
 
 	autoUpdater.on("error", (error) => {
