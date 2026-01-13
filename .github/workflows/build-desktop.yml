@@ -123,6 +123,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.artifact_prefix }}-mac-update-manifest
-          path: apps/desktop/release/latest-mac.yml
+          path: apps/desktop/release/*-mac.yml
           retention-days: ${{ inputs.artifact_retention_days }}
           if-no-files-found: error
