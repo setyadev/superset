@@ -14,6 +14,8 @@ export const env = createEnv({
 		NEXT_PUBLIC_API_URL: z.string().url(),
 		KV_REST_API_URL: z.string().url().optional(),
 		KV_REST_API_TOKEN: z.string().optional(),
+		// Cloud workspace provider
+		FREESTYLE_API_KEY: z.string().optional(),
 	},
 	clientPrefix: "PUBLIC_",
 	client: {},
