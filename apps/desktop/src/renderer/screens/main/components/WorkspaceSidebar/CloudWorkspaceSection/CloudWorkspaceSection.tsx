@@ -80,7 +80,7 @@ export function CloudWorkspaceSection({
 						<Button
 							variant="ghost"
 							size="icon"
-							className="size-5 opacity-0 group-hover:opacity-100 hover:opacity-100"
+							className="size-5"
 							onClick={onNewWorkspace}
 						>
 							<LuPlus className="size-3.5" strokeWidth={STROKE_WIDTH} />
