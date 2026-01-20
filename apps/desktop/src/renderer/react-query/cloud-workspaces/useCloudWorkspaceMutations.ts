@@ -27,7 +27,6 @@ export function useCloudWorkspaceMutations() {
 			setIsPending(true);
 			try {
 				await apiTrpcClient.cloudWorkspace.create.mutate({
-					organizationId: "", // Will be filled by the server from auth context
 					repositoryId: params.repositoryId,
 					name: params.name,
 					branch: params.branch,

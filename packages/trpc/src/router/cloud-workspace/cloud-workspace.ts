@@ -24,15 +24,19 @@ export const cloudWorkspaceRouter = {
 	// ============ QUERIES ============
 
 	/**
-	 * List all cloud workspaces for an organization
+	 * List all cloud workspaces for the user's active organization
 	 */
 	list: protectedProcedure
 		.input(listCloudWorkspacesSchema)
-		.query(async ({ input }) => {
+		.query(async ({ ctx }) => {
+			const organizationId = ctx.session.session.activeOrganizationId;
+			if (!organizationId) {
+				return [];
+			}
 			return db
 				.select()
 				.from(cloudWorkspaces)
-				.where(eq(cloudWorkspaces.organizationId, input.organizationId))
+				.where(eq(cloudWorkspaces.organizationId, organizationId))
 				.orderBy(desc(cloudWorkspaces.createdAt));
 		}),
 
@@ -115,6 +119,15 @@ export const cloudWorkspaceRouter = {
 	create: protectedProcedure
 		.input(createCloudWorkspaceSchema)
 		.mutation(async ({ ctx, input }) => {
+			// Get organization from session
+			const organizationId = ctx.session.session.activeOrganizationId;
+			if (!organizationId) {
+				throw new TRPCError({
+					code: "BAD_REQUEST",
+					message: "No active organization. Please select an organization first.",
+				});
+			}
+
 			// Get repository info for the repo URL
 			const [repository] = await db
 				.select()
@@ -137,7 +150,7 @@ export const cloudWorkspaceRouter = {
 				const [workspace] = await tx
 					.insert(cloudWorkspaces)
 					.values({
-						organizationId: input.organizationId,
+						organizationId,
 						repositoryId: input.repositoryId,
 						creatorId: ctx.session.user.id,
 						name: input.name,

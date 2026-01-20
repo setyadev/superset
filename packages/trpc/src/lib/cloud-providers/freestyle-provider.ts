@@ -41,13 +41,14 @@ export class FreestyleProvider implements CloudProviderInterface {
 		vmId: string;
 		status: CloudWorkspaceStatus;
 	}> {
-		console.log("[cloud/freestyle] Creating VM for repo:", params.repoUrl);
+		console.log("[cloud/freestyle] Creating VM for repo:", params.repoUrl, "branch:", params.branch);
 
 		const { vmId } = await this.freestyle.vms.create({
 			gitRepos: [
 				{
 					repo: params.repoUrl,
 					path: params.workdir ?? "/workspace",
+					rev: params.branch, // Branch, tag, or commit to checkout
 				},
 			],
 			workdir: params.workdir ?? "/workspace",

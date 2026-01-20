@@ -196,10 +196,9 @@ function createOrgCollections(organizationId: string): OrgCollections {
 			onInsert: async ({ transaction }) => {
 				const item = transaction.mutations[0].modified;
 				const result = await apiClient.cloudWorkspace.create.mutate({
-					organizationId: item.organizationId,
 					repositoryId: item.repositoryId,
 					name: item.name,
-					branch: item.branch,
+					branch: item.branch ?? undefined,
 					providerType: item.providerType,
 					autoStopMinutes: item.autoStopMinutes,
 				});

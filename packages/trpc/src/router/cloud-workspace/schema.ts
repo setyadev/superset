@@ -6,7 +6,6 @@ import { z } from "zod";
 
 // Create a new cloud workspace
 export const createCloudWorkspaceSchema = z.object({
-	organizationId: z.string().uuid(),
 	repositoryId: z.string().uuid(),
 	name: z.string().min(1).max(100),
 	branch: z.string().min(1).optional(), // Optional - uses repo default branch if not provided
@@ -19,10 +18,8 @@ export const cloudWorkspaceIdSchema = z.object({
 	workspaceId: z.string().uuid(),
 });
 
-// List workspaces for an organization
-export const listCloudWorkspacesSchema = z.object({
-	organizationId: z.string().uuid(),
-});
+// List workspaces for an organization (uses active organization from session)
+export const listCloudWorkspacesSchema = z.object({});
 
 // Join a workspace session
 export const joinSessionSchema = z.object({

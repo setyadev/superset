@@ -17,7 +17,9 @@ import {
 } from "@superset/ui/select";
 import { useLiveQuery } from "@tanstack/react-db";
 import { useEffect, useRef, useState } from "react";
-import { LuCloud } from "react-icons/lu";
+import { LuCloud, LuExternalLink, LuGithub } from "react-icons/lu";
+import { env } from "renderer/env.renderer";
+import { electronTrpc } from "renderer/lib/electron-trpc";
 import { useCloudWorkspaceMutations } from "renderer/react-query/cloud-workspaces";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import { create } from "zustand";
@@ -50,6 +52,13 @@ export function NewCloudWorkspaceModal() {
 	);
 
 	const { createWorkspace, isReady } = useCloudWorkspaceMutations();
+	const openUrlMutation = electronTrpc.external.openUrl.useMutation();
+
+	const hasRepositories = repositories && repositories.length > 0;
+
+	const handleOpenGitHubIntegration = () => {
+		openUrlMutation.mutate(`${env.NEXT_PUBLIC_WEB_URL}/integrations/github`);
+	};
 
 	// Focus name input when modal opens
 	useEffect(() => {
@@ -142,7 +151,7 @@ export function NewCloudWorkspaceModal() {
 											: (repo.name ?? repo.id)}
 									</SelectItem>
 								))}
-								{(!repositories || repositories.length === 0) && (
+								{!hasRepositories && (
 									<div className="px-2 py-1.5 text-sm text-muted-foreground">
 										No repositories available
 									</div>
@@ -164,13 +173,25 @@ export function NewCloudWorkspaceModal() {
 						</p>
 					</div>
 
-					<div className="flex justify-end gap-2 pt-2">
-						<Button variant="outline" onClick={handleClose}>
-							Cancel
+					<div className="flex items-center justify-between pt-2">
+						<Button
+							variant="ghost"
+							size="sm"
+							className="text-muted-foreground hover:text-foreground gap-1.5"
+							onClick={handleOpenGitHubIntegration}
+						>
+							<LuGithub className="size-4" />
+							Connect GitHub
+							<LuExternalLink className="size-3" />
 						</Button>
-						<Button onClick={handleCreate} disabled={!canCreate}>
-							{createWorkspace.isPending ? "Creating..." : "Create"}
-						</Button>
+						<div className="flex gap-2">
+							<Button variant="outline" onClick={handleClose}>
+								Cancel
+							</Button>
+							<Button onClick={handleCreate} disabled={!canCreate}>
+								{createWorkspace.isPending ? "Creating..." : "Create"}
+							</Button>
+						</div>
 					</div>
 				</div>
 			</DialogContent>

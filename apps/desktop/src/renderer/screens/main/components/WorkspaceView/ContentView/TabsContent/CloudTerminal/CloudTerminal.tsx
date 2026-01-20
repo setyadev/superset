@@ -27,10 +27,11 @@ export function CloudTerminal({
 	const terminalRef = useRef<HTMLDivElement>(null);
 	const xtermRef = useRef<XTerm | null>(null);
 	const fitAddonRef = useRef<FitAddon | null>(null);
-	const isConnectedRef = useRef(false);
+	const isConnectedRef = useRef(false); // Ref for synchronous callback checks
 
 	const [connectionError, setConnectionError] = useState<string | null>(null);
 	const [isConnecting, setIsConnecting] = useState(false);
+	const [isConnected, setIsConnected] = useState(false); // State for subscription reactivity
 	const [isExited, setIsExited] = useState(false);
 
 	const terminalTheme = useTerminalTheme();
@@ -47,9 +48,9 @@ export function CloudTerminal({
 	const resizeRef = useRef(resizeMutation.mutate);
 	resizeRef.current = resizeMutation.mutate;
 
-	// Stream subscription
+	// Stream subscription - uses isConnected state for reactivity
 	electronTrpc.cloudTerminal.stream.useSubscription(paneId, {
-		enabled: isConnectedRef.current,
+		enabled: isConnected,
 		onData: (event) => {
 			const xterm = xtermRef.current;
 			if (!xterm) return;
@@ -100,6 +101,7 @@ export function CloudTerminal({
 			});
 
 			isConnectedRef.current = true;
+			setIsConnected(true);
 			setIsConnecting(false);
 		} catch (error) {
 			console.error("[CloudTerminal] Connection failed:", error);
@@ -181,10 +183,13 @@ export function CloudTerminal({
 			xtermRef.current = null;
 			fitAddonRef.current = null;
 			isConnectedRef.current = false;
+			setIsConnected(false);
 		};
-	}, [cloudWorkspace?.status, connect, paneId, terminalTheme]);
+	// Note: terminalTheme is intentionally NOT in deps - theme updates are handled separately below
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [cloudWorkspace?.status, connect, paneId]);
 
-	// Update theme
+	// Update theme without reinitializing terminal
 	useEffect(() => {
 		const xterm = xtermRef.current;
 		if (xterm && terminalTheme) {

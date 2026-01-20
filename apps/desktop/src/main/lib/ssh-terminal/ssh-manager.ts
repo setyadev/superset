@@ -122,9 +122,12 @@ export class SSHManager extends EventEmitter {
 			session.isAlive = false;
 			this.emit(`exit:${paneId}`, exitCode, signal);
 
-			// Clean up after delay
+			// Clean up after delay, but only if no new session replaced it
 			setTimeout(() => {
-				this.sessions.delete(paneId);
+				const currentSession = this.sessions.get(paneId);
+				if (currentSession === session) {
+					this.sessions.delete(paneId);
+				}
 			}, 5000);
 		});
 
