@@ -17,7 +17,7 @@ This document outlines the testing plan for the Cloud Workspace feature. The fea
    ```
 
 2. **Database Migration**
-   - Ensure migration `0011_add_cloud_workspaces.sql` has been applied
+   - Ensure migration `0012_add_cloud_workspaces.sql` has been applied
    - Run `bun run db:migrate` if needed
 
 3. **Electric SQL Configuration**
