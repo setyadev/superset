@@ -1,33 +1,6 @@
 import { LuImageOff } from "react-icons/lu";
-import { env } from "renderer/env.renderer";
 
-const LINEAR_IMAGE_HOST = "uploads.linear.app";
-
-/**
- * Checks if a URL is a Linear image upload URL.
- */
-function isLinearImageUrl(src: string): boolean {
-	try {
-		const url = new URL(src);
-		return url.host === LINEAR_IMAGE_HOST;
-	} catch {
-		return false;
-	}
-}
-
-/**
- * Converts a Linear image URL to our proxy URL.
- */
-function getLinearProxyUrl(linearUrl: string): string {
-	const proxyUrl = new URL(`${env.NEXT_PUBLIC_API_URL}/api/proxy/linear-image`);
-	proxyUrl.searchParams.set("url", linearUrl);
-	return proxyUrl.toString();
-}
-
-type ImageSrcResult =
-	| { type: "safe"; src: string }
-	| { type: "proxy"; src: string }
-	| { type: "blocked" };
+type ImageSrcResult = { type: "safe"; src: string } | { type: "blocked" };
 
 /**
  * Check if an image source is safe to load.
@@ -36,7 +9,6 @@ type ImageSrcResult =
  *
  * ALLOWED:
  * - data: URLs (embedded base64 images)
- * - Linear image URLs (proxied through our API for authentication)
  *
  * BLOCKED (everything else):
  * - http://, https:// (tracking pixels, privacy leak)
@@ -60,11 +32,6 @@ function processImageSrc(src: string | undefined): ImageSrcResult {
 		return { type: "safe", src: trimmed };
 	}
 
-	// Allow Linear image URLs (will be proxied)
-	if (isLinearImageUrl(trimmed)) {
-		return { type: "proxy", src: getLinearProxyUrl(trimmed) };
-	}
-
 	// Block everything else
 	return { type: "blocked" };
 }
@@ -78,10 +45,7 @@ interface SafeImageProps {
 /**
  * Safe image component for untrusted markdown content.
  *
- * Renders:
- * - Embedded data: URLs (directly)
- * - Linear image URLs (via authenticated proxy)
- *
+ * Renders only embedded data: URLs (directly).
  * All other sources are blocked to prevent local file access, network
  * requests, and path traversal attacks from malicious repository content.
  */
@@ -105,8 +69,6 @@ export function SafeImage({ src, alt, className }: SafeImageProps) {
 			src={result.src}
 			alt={alt}
 			className={className ?? "max-w-full h-auto rounded-md my-4"}
-			// For proxied images, we need to include credentials (auth token)
-			crossOrigin={result.type === "proxy" ? "use-credentials" : undefined}
 		/>
 	);
 }
