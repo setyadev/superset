@@ -1,11 +1,9 @@
 import { LuImageOff } from "react-icons/lu";
 
-type ImageSrcResult = { type: "safe"; src: string } | { type: "blocked" };
-
 /**
  * Check if an image source is safe to load.
  *
- * Uses strict ALLOWLIST approach:
+ * Uses strict ALLOWLIST approach - only data: URLs are safe.
  *
  * ALLOWED:
  * - data: URLs (embedded base64 images)
@@ -22,18 +20,14 @@ type ImageSrcResult = { type: "safe"; src: string } | { type: "blocked" };
  * protocol. Any non-data: image src could access local filesystem or
  * trigger network requests to attacker-controlled servers.
  */
-function processImageSrc(src: string | undefined): ImageSrcResult {
-	if (!src) return { type: "blocked" };
+function isSafeImageSrc(src: string | undefined): boolean {
+	if (!src) return false;
 	const trimmed = src.trim();
-	if (trimmed.length === 0) return { type: "blocked" };
+	if (trimmed.length === 0) return false;
 
-	// Allow data: URLs (embedded images)
-	if (trimmed.toLowerCase().startsWith("data:")) {
-		return { type: "safe", src: trimmed };
-	}
-
-	// Block everything else
-	return { type: "blocked" };
+	// Only allow data: URLs (embedded images)
+	// These are self-contained and can't access external resources
+	return trimmed.toLowerCase().startsWith("data:");
 }
 
 interface SafeImageProps {
@@ -45,14 +39,16 @@ interface SafeImageProps {
 /**
  * Safe image component for untrusted markdown content.
  *
- * Renders only embedded data: URLs (directly).
- * All other sources are blocked to prevent local file access, network
- * requests, and path traversal attacks from malicious repository content.
+ * Only renders embedded data: URLs. All other sources are blocked
+ * to prevent local file access,  network requests, and path traversal
+ * attacks from malicious repository content.
+ *
+ * Future: Could add opt-in support for repo-relative images via a
+ * secure loader that validates paths through secureFs and serves
+ * as blob: URLs.
  */
 export function SafeImage({ src, alt, className }: SafeImageProps) {
-	const result = processImageSrc(src);
-
-	if (result.type === "blocked") {
+	if (!isSafeImageSrc(src)) {
 		return (
 			<div
 				className={`inline-flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-muted-foreground text-sm ${className ?? ""}`}
@@ -64,9 +60,10 @@ export function SafeImage({ src, alt, className }: SafeImageProps) {
 		);
 	}
 
+	// Safe to render - embedded data: URL
 	return (
 		<img
-			src={result.src}
+			src={src}
 			alt={alt}
 			className={className ?? "max-w-full h-auto rounded-md my-4"}
 		/>
