@@ -123,6 +123,8 @@ const config: Configuration = {
 		hardenedRuntime: true,
 		gatekeeperAssess: false,
 		notarize: true,
+		entitlements: join(pkg.resources, "build/entitlements.mac.plist"),
+		entitlementsInherit: join(pkg.resources, "build/entitlements.mac.plist"),
 		extendInfo: {
 			CFBundleName: productName,
 			CFBundleDisplayName: productName,
