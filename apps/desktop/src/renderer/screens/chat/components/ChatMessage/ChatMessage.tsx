@@ -131,7 +131,6 @@ export function ChatMessage({
 					isUser
 						? "bg-primary text-primary-foreground"
 						: "bg-muted text-foreground",
-					isStreaming && "animate-pulse",
 				)}
 			>
 				{isUser ? (

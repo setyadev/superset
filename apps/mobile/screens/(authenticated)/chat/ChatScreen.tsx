@@ -32,25 +32,17 @@ async function sendMessageToStream({
 	userId: string;
 	content: string;
 }): Promise<void> {
-	const messageId = generateUUID();
-	const now = new Date().toISOString();
-
-	const chunkContent = JSON.stringify({
-		type: "whole-message",
-		content,
-	});
+	const uuid = generateUUID();
 
 	const events = [
 		{
 			type: "chunk",
-			key: `${messageId}:0`,
+			key: uuid,
 			value: {
-				messageId,
+				type: "user_input",
+				content,
 				actorId: userId,
-				role: "user",
-				chunk: chunkContent,
-				seq: 0,
-				createdAt: now,
+				createdAt: new Date().toISOString(),
 			},
 			headers: { operation: "insert" },
 		},

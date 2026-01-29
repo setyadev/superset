@@ -134,18 +134,18 @@ class StreamWatcher {
 				const value = event.value as Record<string, unknown> | undefined;
 				if (!value) continue;
 
-				const messageId = value.messageId as string;
-				const role = value.role as string;
-				const chunk = value.chunk as Record<string, unknown>;
-				if (!chunk || typeof chunk !== "object") continue;
+				// Detect user input messages (new format: { type: "user_input", content, ... })
+				if (value.type !== "user_input") continue;
 
-				if (role !== "user" || this.seenMessageIds.has(messageId)) continue;
+				const key = event.key as string;
+				if (!key || this.seenMessageIds.has(key)) continue;
 
-				this.seenMessageIds.add(messageId);
+				this.seenMessageIds.add(key);
 
-				if (chunk.type === "whole-message" && chunk.content) {
-					console.log(`[stream-watcher] New user message: ${messageId}`);
-					this.onNewUserMessage(messageId, String(chunk.content));
+				const content = value.content as string | undefined;
+				if (content) {
+					console.log(`[stream-watcher] New user message: ${key}`);
+					this.onNewUserMessage(key, content);
 				}
 			}
 		} catch {
@@ -318,8 +318,10 @@ class ClaudeSessionManager extends EventEmitter {
 			// Send user message
 			await sdkSession.send(content);
 
-			// Stream and persist ALL SDK messages
-			const messageId = crypto.randomUUID();
+			// Stream and persist ALL SDK messages as raw passthrough.
+			// No envelope — each SDK message is stored directly.
+			// Turn detection happens client-side in materialize().
+			let totalChunks = 0;
 			let seq = 0;
 
 			for await (const msg of sdkSession.stream()) {
@@ -329,9 +331,10 @@ class ClaudeSessionManager extends EventEmitter {
 				}
 
 				const msgAny = msg as Record<string, unknown>;
+				const msgType = msgAny.type as string;
 
 				// Extract session ID from init message
-				if (msgAny.type === "system" && msgAny.subtype === "init") {
+				if (msgType === "system" && msgAny.subtype === "init") {
 					const sdkSessionId = msgAny.session_id as string | undefined;
 					if (sdkSessionId) {
 						session.claudeSessionId = sdkSessionId;
@@ -341,30 +344,25 @@ class ClaudeSessionManager extends EventEmitter {
 					}
 				}
 
-				// Persist raw SDK message to durable stream
+				// Persist raw SDK message with ordering metadata
 				const producer = sessionProducers.get(sessionId);
 				if (producer) {
+					const uuid = (msgAny.uuid as string) || crypto.randomUUID();
 					producer.append(
 						JSON.stringify({
 							type: "chunk",
-							key: `${messageId}:${seq}`,
+							key: uuid,
 							value: {
-								messageId,
-								actorId: "claude",
-								role: "assistant",
-								chunk: msg,
-								seq: seq++,
+								...(msg as Record<string, unknown>),
 								createdAt: new Date().toISOString(),
+								_seq: seq++,
 							},
 							headers: { operation: "upsert" },
 						}),
 					);
 				}
 
-				// Log for debugging
-				console.log(
-					`[claude/session] SDK msg: type=${msgAny.type}, subtype=${(msgAny.subtype as string) || "none"}`,
-				);
+				totalChunks++;
 			}
 
 			sdkSession.close();
@@ -376,7 +374,7 @@ class ClaudeSessionManager extends EventEmitter {
 			}
 
 			console.log(
-				`[claude/session] Message processing complete, ${seq} chunks persisted`,
+				`[claude/session] Message processing complete, ${totalChunks} chunks persisted`,
 			);
 		} catch (error) {
 			const errorMessage =

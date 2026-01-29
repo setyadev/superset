@@ -240,20 +240,17 @@ export class DurableChatClient {
 			throw new Error("Cannot send message without user");
 		}
 
-		const messageId = crypto.randomUUID();
-		const now = new Date().toISOString();
+		const uuid = crypto.randomUUID();
 
 		await this._appendToStream([
 			{
 				type: "chunk",
-				key: `${messageId}:0`,
+				key: uuid,
 				value: {
-					messageId,
+					type: "user_input",
+					content,
 					actorId: user.userId,
-					role: "user",
-					chunk: { type: "whole-message", content },
-					seq: 0,
-					createdAt: now,
+					createdAt: new Date().toISOString(),
 				},
 				headers: { operation: "insert" },
 			},

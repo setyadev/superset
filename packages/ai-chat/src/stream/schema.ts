@@ -14,16 +14,13 @@ import { createStateSchema } from "@durable-streams/state";
 import { z } from "zod";
 
 /**
- * Chunk schema - individual message tokens/chunks for streaming
+ * Chunk schema - raw SDK messages and user input stored directly.
+ *
+ * No envelope wrapping — SDK messages are passthrough, user input uses
+ * { type: "user_input", content, actorId, createdAt }.
+ * The `id` field (primary key) is injected at runtime from the event's `key`.
  */
-export const chunkSchema = z.object({
-	messageId: z.string(),
-	actorId: z.string(),
-	role: z.enum(["user", "assistant", "system"]),
-	chunk: z.record(z.string(), z.unknown()),
-	seq: z.number(),
-	createdAt: z.string(),
-});
+export const chunkSchema = z.record(z.string(), z.unknown());
 
 export type StreamChunk = z.infer<typeof chunkSchema>;
 

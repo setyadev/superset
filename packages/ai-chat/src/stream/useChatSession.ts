@@ -11,12 +11,8 @@ import {
 	type DurableChatClientOptions,
 	type SessionCollections,
 } from "./client";
-import {
-	type ChunkRow,
-	type MessageRow,
-	materializeMessage,
-} from "./materialize";
-import type { StreamChunk, StreamDraft, StreamPresence } from "./schema";
+import { type MessageRow, materializeMessages } from "./materialize";
+import type { StreamDraft, StreamPresence } from "./schema";
 import { useCollectionData } from "./useCollectionData";
 
 // ============================================================================
@@ -155,34 +151,15 @@ export function useChatSession(
 	// Derived State
 	// =========================================================================
 
-	// Materialize messages from chunks
+	// Materialize messages from chunks (processed in collection order)
 	const { messages, streamingMessage } = useMemo(() => {
 		if (chunkRows.length === 0) {
 			return { messages: [], streamingMessage: null };
 		}
 
-		// Group chunks by messageId
-		const byMessage = new Map<string, ChunkRow[]>();
-		for (const rawChunk of chunkRows) {
-			const chunk = rawChunk as StreamChunk & { id: string };
-			const chunkRow: ChunkRow = {
-				messageId: chunk.messageId,
-				actorId: chunk.actorId,
-				role: chunk.role,
-				chunk: chunk.chunk,
-				seq: chunk.seq,
-				createdAt: chunk.createdAt,
-				id: chunk.id,
-			};
-			const existing = byMessage.get(chunk.messageId) ?? [];
-			existing.push(chunkRow);
-			byMessage.set(chunk.messageId, existing);
-		}
-
-		// Materialize each message group and sort by first chunk's createdAt
-		const all = Array.from(byMessage.values())
-			.map((rows) => materializeMessage(rows))
-			.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+		const all = materializeMessages(
+			chunkRows as Array<Record<string, unknown> & { id: string }>,
+		);
 
 		// Separate complete messages from streaming (incomplete) message
 		const complete = all.filter((m) => m.isComplete);

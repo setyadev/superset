@@ -23,7 +23,7 @@ export {
 	type ChunkRow,
 	type MessageRole,
 	type MessageRow,
-	materializeMessage,
+	materializeMessages,
 	type ToolResult,
 } from "./materialize";
 export {

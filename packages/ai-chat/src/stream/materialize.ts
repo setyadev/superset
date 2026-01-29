@@ -1,16 +1,18 @@
 /**
- * Message Materialization (SDK-Native)
+ * Message Materialization (SDK-Native, Zero Envelope)
  *
- * Materializes structured messages from raw SDK message objects stored
- * in the durable stream. No transform layer, no JSON parsing — SDK
- * message objects flow through the stream as structured data.
+ * Processes raw SDK messages and user input chunks from the durable stream
+ * in collection order. Turn boundaries are detected from SDK message type
+ * transitions (stream_event after user = new turn).
+ *
+ * No envelope fields (messageId, seq, role, actorId) — SDK messages are
+ * stored as-is, user input uses { type: "user_input", content, actorId }.
  */
 
 import type {
 	SDKAssistantMessage,
 	SDKMessage,
 	SDKPartialAssistantMessage,
-	SDKResultMessage,
 	SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import type {
@@ -20,10 +22,9 @@ import type {
 	BetaTextBlock,
 	BetaToolUseBlock,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages";
-import type { StreamChunk } from "./schema";
 
 // ============================================================================
-// Custom Types (no SDK equivalent)
+// Types
 // ============================================================================
 
 export type MessageRole = "user" | "assistant" | "system";
@@ -47,56 +48,111 @@ export interface MessageRow {
 	createdAt: Date;
 }
 
-export type ChunkRow = StreamChunk & { id: string };
+/** Raw chunk row from the durable stream collection */
+export type ChunkRow = Record<string, unknown> & { id: string };
 
 // ============================================================================
-// Materialize
+// Materialize All Messages
 // ============================================================================
 
 /**
- * Materialize a message from collected chunk rows.
+ * Materialize all messages from raw chunk rows.
  *
- * Each chunk's `chunk` field is a raw SDK message object (no JSON parsing).
- * User messages use `{ type: "whole-message", content }` format.
- * Assistant messages are raw SDKMessage objects from the Claude Agent SDK.
+ * Chunks are sorted by createdAt + _seq before processing to ensure
+ * correct ordering regardless of collection insertion order (which
+ * may not match stream append order after Electric SQL sync/reconnect).
+ *
+ * User input chunks become user messages. SDK message chunks are grouped
+ * into assistant turns with automatic boundary detection.
  */
-export function materializeMessage(rows: ChunkRow[]): MessageRow {
-	if (!rows || rows.length === 0) {
-		throw new Error("Cannot materialize message from empty rows");
+export function materializeMessages(chunks: ChunkRow[]): MessageRow[] {
+	if (chunks.length === 0) return [];
+
+	// Sort by createdAt, then _seq as tiebreaker for same-millisecond chunks
+	const sorted = [...chunks].sort((a, b) => {
+		const aTime = a.createdAt ? new Date(String(a.createdAt)).getTime() : 0;
+		const bTime = b.createdAt ? new Date(String(b.createdAt)).getTime() : 0;
+		if (aTime !== bTime) return aTime - bTime;
+		const aSeq = typeof a._seq === "number" ? a._seq : 0;
+		const bSeq = typeof b._seq === "number" ? b._seq : 0;
+		return aSeq - bSeq;
+	});
+
+	const messages: MessageRow[] = [];
+	let currentTurnChunks: ChunkRow[] = [];
+	let lastRenderingType: string | null = null;
+
+	for (const chunk of sorted) {
+		const chunkType = chunk.type as string | undefined;
+
+		// User input from client
+		if (chunkType === "user_input") {
+			// Flush current assistant turn
+			if (currentTurnChunks.length > 0) {
+				messages.push(materializeTurn(currentTurnChunks));
+				currentTurnChunks = [];
+				lastRenderingType = null;
+			}
+			messages.push({
+				id: chunk.id,
+				role: "user",
+				content: String(chunk.content ?? ""),
+				contentBlocks: [],
+				toolResults: new Map(),
+				actorId: String(chunk.actorId ?? ""),
+				isComplete: true,
+				isStreaming: false,
+				createdAt: new Date(
+					String(chunk.createdAt ?? new Date().toISOString()),
+				),
+			});
+			continue;
+		}
+
+		// SDK message — only process rendering-relevant types for turns
+		const isRenderingType =
+			chunkType === "stream_event" ||
+			chunkType === "assistant" ||
+			chunkType === "user" ||
+			chunkType === "result";
+
+		if (!isRenderingType) continue;
+
+		// Turn boundary: stream_event after user (tool result) = new turn
+		if (chunkType === "stream_event" && lastRenderingType === "user") {
+			if (currentTurnChunks.length > 0) {
+				messages.push(materializeTurn(currentTurnChunks));
+				currentTurnChunks = [];
+			}
+		}
+
+		currentTurnChunks.push(chunk);
+		lastRenderingType = chunkType;
 	}
 
-	const sorted = [...rows].sort((a, b) => a.seq - b.seq);
-	const first = sorted[0];
-	if (!first) {
-		throw new Error("Cannot materialize message from empty rows");
+	// Flush remaining turn
+	if (currentTurnChunks.length > 0) {
+		messages.push(materializeTurn(currentTurnChunks));
 	}
 
-	// User messages: simple format, single chunk
-	if (first.role === "user") {
-		const chunk = first.chunk;
-		const content =
-			chunk.type === "whole-message" ? String(chunk.content ?? "") : "";
-		return {
-			id: first.messageId,
-			role: "user",
-			content,
-			contentBlocks: [],
-			toolResults: new Map(),
-			actorId: first.actorId,
-			isComplete: true,
-			isStreaming: false,
-			createdAt: new Date(first.createdAt),
-		};
-	}
+	return messages;
+}
 
-	// Assistant messages: classify by SDK message type
+// ============================================================================
+// Turn Materialization
+// ============================================================================
+
+/**
+ * Materialize a single assistant turn from its SDK message chunks.
+ */
+function materializeTurn(chunks: ChunkRow[]): MessageRow {
+	const firstChunk = chunks[0]!;
+
 	let assistantMsg: SDKAssistantMessage | null = null;
 	const streamEvents: SDKPartialAssistantMessage[] = [];
 	const userMsgs: SDKUserMessage[] = [];
-	let resultMsg: SDKResultMessage | null = null;
-
-	for (const row of sorted) {
-		const msg = row.chunk as unknown as SDKMessage;
+	for (const chunk of chunks) {
+		const msg = chunk as unknown as SDKMessage;
 		switch (msg.type) {
 			case "assistant":
 				assistantMsg = msg;
@@ -107,13 +163,10 @@ export function materializeMessage(rows: ChunkRow[]): MessageRow {
 			case "user":
 				userMsgs.push(msg);
 				break;
-			case "result":
-				resultMsg = msg;
-				break;
 		}
 	}
 
-	// Build content blocks
+	// Build content blocks: prefer authoritative assistant message
 	let contentBlocks: BetaContentBlock[];
 	let isStreaming: boolean;
 
@@ -122,11 +175,40 @@ export function materializeMessage(rows: ChunkRow[]): MessageRow {
 		isStreaming = false;
 	} else {
 		contentBlocks = buildBlocksFromStreamEvents(streamEvents);
-		isStreaming = !resultMsg;
+		isStreaming = true;
 	}
 
 	// Build tool results from user messages (tool_result blocks)
+	const toolResults = buildToolResults(userMsgs);
+
+	// Join text blocks for backward-compat content field
+	const content = contentBlocks
+		.filter((b): b is BetaTextBlock => b.type === "text")
+		.map((b) => b.text)
+		.join("");
+
+	return {
+		id: firstChunk.id,
+		role: "assistant",
+		content,
+		contentBlocks,
+		toolResults,
+		actorId: "claude",
+		isComplete: assistantMsg !== null,
+		isStreaming,
+		createdAt: firstChunk.createdAt
+			? new Date(String(firstChunk.createdAt))
+			: new Date(),
+	};
+}
+
+// ============================================================================
+// Tool Result Extraction
+// ============================================================================
+
+function buildToolResults(userMsgs: SDKUserMessage[]): Map<string, ToolResult> {
 	const toolResults = new Map<string, ToolResult>();
+
 	for (const userMsg of userMsgs) {
 		const msgContent = userMsg.message.content;
 		if (!Array.isArray(msgContent)) continue;
@@ -159,23 +241,7 @@ export function materializeMessage(rows: ChunkRow[]): MessageRow {
 		}
 	}
 
-	// Join text blocks for backward-compat content field
-	const content = contentBlocks
-		.filter((b): b is BetaTextBlock => b.type === "text")
-		.map((b) => b.text)
-		.join("");
-
-	return {
-		id: first.messageId,
-		role: first.role,
-		content,
-		contentBlocks,
-		toolResults,
-		actorId: first.actorId,
-		isComplete: resultMsg !== null,
-		isStreaming,
-		createdAt: new Date(first.createdAt),
-	};
+	return toolResults;
 }
 
 // ============================================================================
