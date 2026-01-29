@@ -104,7 +104,7 @@ async function closeProducer(sessionId: string): Promise<void> {
 // ============================================================================
 
 class StreamWatcher {
-	private intervalId: NodeJS.Timeout | null = null;
+	private intervalId: ReturnType<typeof setInterval> | null = null;
 	private seenMessageIds: Set<string> = new Set();
 	private onNewUserMessage: (messageId: string, content: string) => void;
 	private sessionId = "";

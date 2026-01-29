@@ -1,2 +1,2 @@
 export { ChatListScreen } from "./ChatListScreen";
-export { ChatScreen } from "./ChatScreen";
+export { ChatScreen } from "./[sessionId]";
