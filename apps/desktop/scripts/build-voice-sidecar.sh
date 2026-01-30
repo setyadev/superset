@@ -64,9 +64,13 @@ if [ ! -f "$INTERNAL_DIR/openwakeword/resources/models/hey_jarvis_v0.1.onnx" ]; 
   echo "[voice-sidecar] Model not found in bundle, copying openwakeword data manually..."
   OWW_PKG_DIR=$("$PYTHON" -c "import openwakeword, os; print(os.path.dirname(openwakeword.__file__))")
   echo "[voice-sidecar] Copying from: $OWW_PKG_DIR"
+  echo "[voice-sidecar] Source package contents:"
+  find "$OWW_PKG_DIR" -name "*.onnx" 2>/dev/null || echo "[voice-sidecar] No .onnx files in source!"
   # Remove any partial directory and copy the full package tree
   rm -rf "$INTERNAL_DIR/openwakeword"
   cp -R "$OWW_PKG_DIR" "$INTERNAL_DIR/openwakeword"
+  echo "[voice-sidecar] After copy:"
+  find "$INTERNAL_DIR/openwakeword" -name "*.onnx" 2>/dev/null || echo "[voice-sidecar] No .onnx files after copy!"
 fi
 
 # Final verification
