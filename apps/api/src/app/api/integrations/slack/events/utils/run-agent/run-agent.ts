@@ -1,10 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { WebClient } from "@slack/web-api";
-
 import { db } from "@superset/db/client";
 import { integrationConnections } from "@superset/db/schema";
 import { and, eq } from "drizzle-orm";
+import { env } from "@/env";
 import type { AgentAction } from "../slack-blocks";
 import {
 	createSlackMcpClient,
@@ -186,7 +186,7 @@ Available tool prefixes:
 export async function runSlackAgent(
 	params: RunSlackAgentParams,
 ): Promise<SlackAgentResult> {
-	const anthropic = new Anthropic();
+	const anthropic = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
 	const actions: AgentAction[] = [];
 
 	const connection = await db.query.integrationConnections.findFirst({
