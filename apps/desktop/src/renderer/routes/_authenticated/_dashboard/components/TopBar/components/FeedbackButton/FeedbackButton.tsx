@@ -184,39 +184,39 @@ export function FeedbackButton() {
 						</div>
 					</div>
 
-					<p className="text-xs text-muted-foreground">
-						Looking for help? Try opening a{" "}
+					<div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+						<span>Looking for help? Try opening a</span>
 						<a
 							href="https://github.com/superset-sh/superset/issues"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="inline-flex items-center gap-1 text-foreground hover:underline"
+							className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted text-foreground hover:bg-accent transition-colors"
 						>
 							<LuGithub className="size-3" />
 							GitHub issue
 						</a>
-						, our{" "}
+						<span>, our</span>
 						<a
 							href="https://docs.superset.sh"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="inline-flex items-center gap-1 text-foreground hover:underline"
+							className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted text-foreground hover:bg-accent transition-colors"
 						>
 							<LuBookOpen className="size-3" />
 							docs
 						</a>
-						, or{" "}
+						<span>, or</span>
 						<a
 							href="https://discord.gg/cZeD9WYcV7"
 							target="_blank"
 							rel="noopener noreferrer"
-							className="inline-flex items-center gap-1 text-foreground hover:underline"
+							className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted text-foreground hover:bg-accent transition-colors"
 						>
 							<FaDiscord className="size-3" />
 							Discord
 						</a>
-						.
-					</p>
+						<span>.</span>
+					</div>
 
 					<DialogFooter className="gap-2 sm:gap-0">
 						{hasContent && (
