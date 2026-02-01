@@ -398,8 +398,7 @@ export function CloudHomePage({
 									variant="outline"
 									size="sm"
 									onClick={() => {
-										const apiUrl = env.NEXT_PUBLIC_NGROK_URL ?? env.NEXT_PUBLIC_API_URL;
-										window.location.href = `${apiUrl}/api/github/install?organizationId=${organizationId}`;
+										window.location.href = `${env.NEXT_PUBLIC_API_URL}/api/github/install?organizationId=${organizationId}`;
 									}}
 								>
 									<LuGithub className="size-4 mr-2" />
