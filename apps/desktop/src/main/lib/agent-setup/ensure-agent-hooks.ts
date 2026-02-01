@@ -71,13 +71,72 @@ async function ensureScriptFile(params: {
 
 /**
  * Ensures settings file exists and contains hooks configuration.
+ * For global-settings agents, merges our hooks into the existing user settings.
  */
 async function ensureAgentSettings(agentName: AgentName): Promise<void> {
+	const config = AGENT_CONFIGS[agentName];
 	const settingsPath = getAgentSettingsPath(agentName);
 	if (!settingsPath) return; // Agent doesn't use settings file
 
 	const existing = await readFileIfExists(settingsPath);
 
+	// For global-settings type, we need to merge hooks into existing settings
+	if (config.type === "global-settings") {
+		const notifyPath = getNotifyScriptPath();
+		const hooksConfig = config.getHooksConfig(notifyPath);
+
+		// Ensure parent directory exists
+		const settingsDir = path.dirname(settingsPath);
+		try {
+			await fs.mkdir(settingsDir, { recursive: true });
+		} catch {
+			// Directory may already exist
+		}
+
+		// Parse existing settings or start with empty object
+		let existingSettings: Record<string, unknown> = {};
+		if (existing) {
+			try {
+				existingSettings = JSON.parse(existing);
+			} catch {
+				console.warn(
+					`[agent-setup] Failed to parse ${settingsPath}, preserving file`,
+				);
+				return; // Don't overwrite if we can't parse
+			}
+		}
+
+		// Check if our hooks are already present
+		const existingHooks = existingSettings.hooks as
+			| Record<string, unknown>
+			| undefined;
+		const newHooks = hooksConfig.hooks as Record<string, unknown>;
+
+		// Check if all our hook events are already configured
+		const needsUpdate = Object.keys(newHooks).some(
+			(eventName) => !existingHooks?.[eventName],
+		);
+
+		if (needsUpdate) {
+			const mergedSettings = {
+				...existingSettings,
+				hooks: {
+					...existingHooks,
+					...newHooks,
+				},
+			};
+
+			await fs.writeFile(
+				settingsPath,
+				JSON.stringify(mergedSettings, null, 2),
+				{ mode: 0o644 },
+			);
+			console.log(`[agent-setup] Merged hooks into ${settingsPath}`);
+		}
+		return;
+	}
+
+	// For settings-file type, just check if hooks exist
 	if (!existing || !existing.includes('"hooks"')) {
 		const content = getAgentSettingsContent(agentName);
 		if (content) {

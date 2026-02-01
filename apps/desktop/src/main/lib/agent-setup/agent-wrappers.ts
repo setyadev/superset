@@ -37,7 +37,7 @@ interface BaseAgentConfig {
 
 /**
  * Agent that uses a settings file passed via CLI flag.
- * Examples: Claude Code (--settings), Factory Droid (--settings)
+ * Example: Claude Code (--settings)
  */
 interface SettingsFileAgent extends BaseAgentConfig {
 	type: "settings-file";
@@ -79,7 +79,24 @@ interface PluginAgent extends BaseAgentConfig {
 	pluginMarker: string;
 }
 
-type AgentConfig = SettingsFileAgent | InlineConfigAgent | PluginAgent;
+/**
+ * Agent that requires modifying the user's global settings file directly.
+ * Used when the agent doesn't support CLI flags for settings injection.
+ * Example: Factory Droid (reads from ~/.factory/settings.json only)
+ */
+interface GlobalSettingsAgent extends BaseAgentConfig {
+	type: "global-settings";
+	/** Path to the agent's global settings file */
+	globalSettingsPath: string;
+	/** Function to generate hooks configuration to merge into settings */
+	getHooksConfig: (notifyPath: string) => Record<string, unknown>;
+}
+
+type AgentConfig =
+	| SettingsFileAgent
+	| InlineConfigAgent
+	| PluginAgent
+	| GlobalSettingsAgent;
 
 // ============================================================================
 // Shell Script Helpers
@@ -148,6 +165,13 @@ function getOpenCodeGlobalPluginPath(): string {
 	return path.join(configHome, "opencode", "plugin", "superset-notify.js");
 }
 
+/** Path to Factory Droid's global settings file */
+const FACTORY_SETTINGS_PATH = path.join(
+	os.homedir(),
+	".factory",
+	"settings.json",
+);
+
 /**
  * Registry of all supported agents and their configurations.
  * To add a new agent, simply add a new entry to this object.
@@ -179,13 +203,13 @@ export const AGENT_CONFIGS = {
 			`exec "$REAL_BIN" -c 'notify=["bash","${notifyPath}"]' "$@"`,
 	},
 	factory: {
-		type: "settings-file",
+		type: "global-settings",
 		name: "Factory Droid",
 		binaryName: "droid",
-		settingsFileName: "factory-settings.json",
-		settingsFlag: "--settings",
+		globalSettingsPath: FACTORY_SETTINGS_PATH,
 		/**
 		 * Factory Droid hooks configuration.
+		 * Factory doesn't support CLI flags for settings, so we merge into ~/.factory/settings.json
 		 * @see https://docs.factory.ai/cli/configuration/hooks-guide
 		 */
 		getHooksConfig: (notifyPath: string) => ({
@@ -224,8 +248,13 @@ export function getAgentWrapperPath(agentName: AgentName): string {
 
 export function getAgentSettingsPath(agentName: AgentName): string | null {
 	const config = AGENT_CONFIGS[agentName];
-	if (config.type !== "settings-file") return null;
-	return path.join(HOOKS_DIR, config.settingsFileName);
+	if (config.type === "settings-file") {
+		return path.join(HOOKS_DIR, config.settingsFileName);
+	}
+	if (config.type === "global-settings") {
+		return config.globalSettingsPath;
+	}
+	return null;
 }
 
 // Legacy exports for backwards compatibility
@@ -246,7 +275,8 @@ export { getOpenCodeGlobalPluginPath };
 
 export function getAgentSettingsContent(agentName: AgentName): string | null {
 	const config = AGENT_CONFIGS[agentName];
-	if (config.type !== "settings-file") return null;
+	if (config.type !== "settings-file" && config.type !== "global-settings")
+		return null;
 	const notifyPath = getNotifyScriptPath();
 	return JSON.stringify(config.getHooksConfig(notifyPath));
 }
@@ -269,6 +299,12 @@ export function buildAgentWrapperScript(agentName: AgentName): string {
 		}
 		case "plugin": {
 			execCommand = `export ${config.envVar}="${config.envValue}"\nexec "$REAL_BIN" "$@"`;
+			break;
+		}
+		case "global-settings": {
+			// For global-settings agents, we just pass through to the real binary.
+			// The settings are merged into the user's global config file separately.
+			execCommand = `exec "$REAL_BIN" "$@"`;
 			break;
 		}
 	}
@@ -297,11 +333,11 @@ export const buildCodexWrapperScript = (notifyPath: string) =>
 		agentName: "Codex",
 		execCommand: AGENT_CONFIGS.codex.buildExecCommand(notifyPath),
 	});
-export const buildFactoryWrapperScript = (settingsPath: string) =>
+export const buildFactoryWrapperScript = (_settingsPath: string) =>
 	buildWrapperScript({
 		binaryName: "droid",
 		agentName: "Factory Droid",
-		execCommand: `exec "$REAL_BIN" --settings "${settingsPath}" "$@"`,
+		execCommand: `exec "$REAL_BIN" "$@"`,
 	});
 export const buildOpenCodeWrapperScript = (opencodeConfigDir: string) =>
 	buildWrapperScript({
@@ -316,17 +352,66 @@ export { getOpenCodePluginContent };
 // ============================================================================
 
 /**
+ * Merges Superset hooks into an agent's global settings file.
+ * Preserves existing user settings while adding/updating our hooks.
+ */
+function mergeGlobalSettings(config: GlobalSettingsAgent): void {
+	const notifyPath = getNotifyScriptPath();
+	const hooksConfig = config.getHooksConfig(notifyPath);
+
+	// Ensure parent directory exists
+	const settingsDir = path.dirname(config.globalSettingsPath);
+	if (!fs.existsSync(settingsDir)) {
+		fs.mkdirSync(settingsDir, { recursive: true });
+	}
+
+	// Read existing settings or start with empty object
+	let existingSettings: Record<string, unknown> = {};
+	if (fs.existsSync(config.globalSettingsPath)) {
+		try {
+			const content = fs.readFileSync(config.globalSettingsPath, "utf-8");
+			existingSettings = JSON.parse(content);
+		} catch {
+			console.warn(
+				`[agent-setup] Failed to parse ${config.globalSettingsPath}, starting fresh`,
+			);
+		}
+	}
+
+	// Merge hooks - our hooks take precedence
+	const mergedSettings = {
+		...existingSettings,
+		hooks: {
+			...(existingSettings.hooks as Record<string, unknown> | undefined),
+			...(hooksConfig.hooks as Record<string, unknown>),
+		},
+	};
+
+	fs.writeFileSync(
+		config.globalSettingsPath,
+		JSON.stringify(mergedSettings, null, 2),
+		{ mode: 0o644 },
+	);
+	console.log(`[agent-setup] Merged hooks into ${config.globalSettingsPath}`);
+}
+
+/**
  * Creates all necessary files for an agent (wrapper, settings, plugin).
  */
 export function createAgent(agentName: AgentName): void {
 	const config = AGENT_CONFIGS[agentName];
 	const notifyPath = getNotifyScriptPath();
 
-	// Create settings file if needed
+	// Create settings file if needed (settings-file type)
 	if (config.type === "settings-file") {
 		const settingsPath = path.join(HOOKS_DIR, config.settingsFileName);
 		const content = JSON.stringify(config.getHooksConfig(notifyPath));
 		fs.writeFileSync(settingsPath, content, { mode: 0o644 });
+	}
+
+	// Merge into global settings if needed (global-settings type)
+	if (config.type === "global-settings") {
+		mergeGlobalSettings(config);
 	}
 
 	// Create plugin file if needed
