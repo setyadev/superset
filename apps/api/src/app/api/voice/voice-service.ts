@@ -17,16 +17,25 @@ interface SSEWriter {
 	write(event: string, data: unknown): void;
 }
 
-async function transcribeAudio(audioBuffer: Uint8Array): Promise<string> {
+async function transcribeAudio({
+	audioBuffer,
+	signal,
+}: {
+	audioBuffer: Uint8Array;
+	signal?: AbortSignal;
+}): Promise<string> {
 	const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
 	const blob = new Blob([audioBuffer as BlobPart], { type: "audio/wav" });
 	const file = new File([blob], "audio.wav", { type: "audio/wav" });
 
-	const result = await openai.audio.transcriptions.create({
-		model: "whisper-1",
-		file,
-	});
+	const result = await openai.audio.transcriptions.create(
+		{
+			model: "whisper-1",
+			file,
+		},
+		{ signal },
+	);
 
 	// Strip wake word from transcription
 	let text = result.text.trim();
@@ -41,13 +50,15 @@ export async function runVoicePipeline({
 	audioBuffer,
 	ctx,
 	sse,
+	signal,
 }: {
 	audioBuffer: Uint8Array;
 	ctx: McpContext;
 	sse: SSEWriter;
+	signal?: AbortSignal;
 }): Promise<void> {
 	// 1. Transcribe
-	const transcription = await transcribeAudio(audioBuffer);
+	const transcription = await transcribeAudio({ audioBuffer, signal });
 	sse.write("transcription", { text: transcription });
 
 	if (!transcription) {
@@ -81,88 +92,103 @@ export async function runVoicePipeline({
 
 		let fullResponse = "";
 
-		const MAX_TOOL_ROUNDS = 5;
-		for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-			const stream = anthropic.messages.stream({
-				model: "claude-sonnet-4-20250514",
-				max_tokens: 1024,
-				system: SYSTEM_PROMPT,
-				messages,
-				tools: anthropicTools.length > 0 ? anthropicTools : undefined,
-			});
+		try {
+			const MAX_TOOL_ROUNDS = 5;
+			for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+				if (signal?.aborted) return;
 
-			for await (const event of stream) {
-				if (event.type === "content_block_delta") {
-					if (event.delta.type === "text_delta") {
-						fullResponse += event.delta.text;
-						sse.write("text_delta", { delta: event.delta.text });
+				const stream = anthropic.messages.stream(
+					{
+						model: "claude-sonnet-4-20250514",
+						max_tokens: 1024,
+						system: SYSTEM_PROMPT,
+						messages,
+						tools: anthropicTools.length > 0 ? anthropicTools : undefined,
+					},
+					{ signal },
+				);
+
+				for await (const event of stream) {
+					if (event.type === "content_block_delta") {
+						if (event.delta.type === "text_delta") {
+							fullResponse += event.delta.text;
+							sse.write("text_delta", { delta: event.delta.text });
+						}
 					}
 				}
-			}
 
-			const finalMessage = await stream.finalMessage();
-			const contentBlocks = finalMessage.content;
+				const finalMessage = await stream.finalMessage();
+				const contentBlocks = finalMessage.content;
 
-			const toolUseBlocks = contentBlocks.filter(
-				(block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
-			);
+				const toolUseBlocks = contentBlocks.filter(
+					(block): block is Anthropic.ToolUseBlock => block.type === "tool_use",
+				);
 
-			if (toolUseBlocks.length === 0) {
-				break;
-			}
-
-			const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-			for (const toolBlock of toolUseBlocks) {
-				sse.write("tool_use", {
-					toolName: toolBlock.name,
-					toolInput: toolBlock.input,
-				});
-
-				try {
-					const result = await mcpClient.callTool({
-						name: toolBlock.name,
-						arguments: toolBlock.input as Record<string, unknown>,
-					});
-
-					const resultText = JSON.stringify(result.content);
-
-					sse.write("tool_result", {
-						toolName: toolBlock.name,
-						result: resultText,
-					});
-
-					toolResults.push({
-						type: "tool_result",
-						tool_use_id: toolBlock.id,
-						content: resultText,
-					});
-				} catch (error) {
-					console.error(
-						`[voice/tool] Error executing ${toolBlock.name}:`,
-						error,
-					);
-					const errorText = JSON.stringify({
-						error:
-							error instanceof Error ? error.message : "Tool execution failed",
-					});
-
-					sse.write("tool_result", {
-						toolName: toolBlock.name,
-						result: errorText,
-					});
-
-					toolResults.push({
-						type: "tool_result",
-						tool_use_id: toolBlock.id,
-						content: errorText,
-						is_error: true,
-					});
+				if (toolUseBlocks.length === 0) {
+					break;
 				}
-			}
 
-			messages.push({ role: "assistant", content: contentBlocks });
-			messages.push({ role: "user", content: toolResults });
+				const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+				for (const toolBlock of toolUseBlocks) {
+					if (signal?.aborted) return;
+
+					sse.write("tool_use", {
+						toolName: toolBlock.name,
+						toolInput: toolBlock.input,
+					});
+
+					try {
+						const result = await mcpClient.callTool({
+							name: toolBlock.name,
+							arguments: toolBlock.input as Record<string, unknown>,
+						});
+
+						const resultText = JSON.stringify(result.content);
+
+						sse.write("tool_result", {
+							toolName: toolBlock.name,
+							result: resultText,
+						});
+
+						toolResults.push({
+							type: "tool_result",
+							tool_use_id: toolBlock.id,
+							content: resultText,
+						});
+					} catch (error) {
+						if (signal?.aborted) return;
+						console.error(
+							`[voice/tool] Error executing ${toolBlock.name}:`,
+							error,
+						);
+						const errorText = JSON.stringify({
+							error:
+								error instanceof Error
+									? error.message
+									: "Tool execution failed",
+						});
+
+						sse.write("tool_result", {
+							toolName: toolBlock.name,
+							result: errorText,
+						});
+
+						toolResults.push({
+							type: "tool_result",
+							tool_use_id: toolBlock.id,
+							content: errorText,
+							is_error: true,
+						});
+					}
+				}
+
+				messages.push({ role: "assistant", content: contentBlocks });
+				messages.push({ role: "user", content: toolResults });
+			}
+		} catch (error) {
+			if (signal?.aborted) return;
+			throw error;
 		}
 
 		sse.write("done", { fullResponse });

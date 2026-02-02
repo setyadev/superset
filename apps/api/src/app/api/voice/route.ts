@@ -1,34 +1,17 @@
 import { auth } from "@superset/auth/server";
-import type { McpContext } from "@superset/mcp/auth";
 import { runVoicePipeline } from "./voice-service";
 
-async function authenticate(request: Request): Promise<McpContext | null> {
-	// Try session auth
-	const session = await auth.api.getSession({ headers: request.headers });
-	if (session?.session) {
-		const extendedSession = session.session as {
-			activeOrganizationId?: string;
-		};
-		if (!extendedSession.activeOrganizationId) {
-			return null;
-		}
-		return {
-			userId: session.user.id,
-			organizationId: extendedSession.activeOrganizationId,
-		};
-	}
-
-	return null;
-}
-
 export async function POST(request: Request) {
-	// 1. Authenticate
-	const ctx = await authenticate(request);
-	if (!ctx) {
+	const session = await auth.api.getSession({ headers: request.headers });
+	if (!session?.user) {
 		return Response.json({ error: "Unauthorized" }, { status: 401 });
 	}
 
-	// 2. Parse multipart form data
+	const organizationId = session.session.activeOrganizationId;
+	if (!organizationId) {
+		return Response.json({ error: "No active organization" }, { status: 400 });
+	}
+
 	let formData: FormData;
 	try {
 		formData = await request.formData();
@@ -57,7 +40,6 @@ export async function POST(request: Request) {
 
 	const audioBuffer = new Uint8Array(await audioFile.arrayBuffer());
 
-	// 3. Stream SSE response
 	const encoder = new TextEncoder();
 
 	const stream = new ReadableStream({
@@ -70,13 +52,20 @@ export async function POST(request: Request) {
 			};
 
 			try {
-				await runVoicePipeline({ audioBuffer, ctx, sse });
-			} catch (error) {
-				console.error("[voice/route] Pipeline error:", error);
-				sse.write("error", {
-					message:
-						error instanceof Error ? error.message : "Voice pipeline failed",
+				await runVoicePipeline({
+					audioBuffer,
+					ctx: { userId: session.user.id, organizationId },
+					sse,
+					signal: request.signal,
 				});
+			} catch (error) {
+				if (!request.signal.aborted) {
+					console.error("[voice/route] Pipeline error:", error);
+					sse.write("error", {
+						message:
+							error instanceof Error ? error.message : "Voice pipeline failed",
+					});
+				}
 			} finally {
 				controller.close();
 			}

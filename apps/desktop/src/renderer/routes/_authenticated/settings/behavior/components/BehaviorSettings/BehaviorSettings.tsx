@@ -211,7 +211,7 @@ export function BehaviorSettings({ visibleItems }: BehaviorSettingsProps) {
 									Voice Commands
 								</Label>
 								<p className="text-xs text-muted-foreground">
-									Enable wake word detection and voice commands
+									Say "Hey Jarvis" to control Superset with your voice
 								</p>
 							</div>
 							<Switch

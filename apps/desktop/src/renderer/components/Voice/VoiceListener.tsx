@@ -45,8 +45,14 @@ export function VoiceListener() {
 						(id) => <RecordingIndicator toastId={id} />,
 						{
 							duration: Number.POSITIVE_INFINITY,
-							position: "bottom-center",
+							position: "top-center",
 							unstyled: true,
+							style: {
+								left: 0,
+								right: 0,
+								display: "flex",
+								justifyContent: "center",
+							},
 						},
 					);
 					indicatorToastRef.current = toastId;
@@ -63,8 +69,14 @@ export function VoiceListener() {
 						(id) => <ResponsePanel toastId={id} audioB64={event.audioB64} />,
 						{
 							duration: Number.POSITIVE_INFINITY,
-							position: "bottom-center",
+							position: "top-center",
 							unstyled: true,
+							style: {
+								left: 0,
+								right: 0,
+								display: "flex",
+								justifyContent: "center",
+							},
 						},
 					);
 					responseToastRef.current = toastId;

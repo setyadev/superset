@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { getAuthToken } from "renderer/lib/auth-client";
 import { env } from "renderer/env.renderer";
 
 type PipelineStatus =
@@ -23,38 +24,28 @@ interface VoicePipelineState {
 	error: string | null;
 }
 
-export function useVoicePipeline() {
-	const [state, setState] = useState<VoicePipelineState>({
-		status: "idle",
-		transcription: null,
-		toolCalls: [],
-		responseText: "",
-		error: null,
-	});
+const INITIAL_STATE: VoicePipelineState = {
+	status: "idle",
+	transcription: null,
+	toolCalls: [],
+	responseText: "",
+	error: null,
+};
 
+export function useVoicePipeline() {
+	const [state, setState] = useState<VoicePipelineState>(INITIAL_STATE);
 	const abortRef = useRef<AbortController | null>(null);
 
 	const processAudio = useCallback(async (audioB64: string) => {
-		// Abort any in-flight request
 		abortRef.current?.abort();
+		setState({ ...INITIAL_STATE, status: "transcribing" });
 
-		// Reset state
-		setState({
-			status: "transcribing",
-			transcription: null,
-			toolCalls: [],
-			responseText: "",
-			error: null,
-		});
-
-		// Decode base64 to binary
 		const binaryStr = atob(audioB64);
 		const bytes = new Uint8Array(binaryStr.length);
 		for (let i = 0; i < binaryStr.length; i++) {
 			bytes[i] = binaryStr.charCodeAt(i);
 		}
 
-		// Build form data
 		const formData = new FormData();
 		formData.append(
 			"audio",
@@ -62,15 +53,21 @@ export function useVoicePipeline() {
 			"audio.wav",
 		);
 
-		// POST to API with SSE response
 		const abortController = new AbortController();
 		abortRef.current = abortController;
 
 		try {
+			const headers: HeadersInit = {};
+			const token = getAuthToken();
+			if (token) {
+				headers.Authorization = `Bearer ${token}`;
+			}
+
 			const response = await fetch(`${env.NEXT_PUBLIC_API_URL}/api/voice`, {
 				method: "POST",
 				body: formData,
 				credentials: "include",
+				headers,
 				signal: abortController.signal,
 			});
 
@@ -93,7 +90,6 @@ export function useVoicePipeline() {
 				return;
 			}
 
-			// Read SSE stream
 			const reader = response.body.getReader();
 			const decoder = new TextDecoder();
 			let buffer = "";
@@ -103,8 +99,6 @@ export function useVoicePipeline() {
 				if (done) break;
 
 				buffer += decoder.decode(value, { stream: true });
-
-				// Parse SSE events from buffer
 				const lines = buffer.split("\n");
 				buffer = lines.pop() ?? "";
 
@@ -114,8 +108,7 @@ export function useVoicePipeline() {
 						eventType = line.slice(7).trim();
 					} else if (line.startsWith("data: ") && eventType) {
 						try {
-							const data = JSON.parse(line.slice(6));
-							handleSSEEvent(eventType, data, setState);
+							handleSSEEvent(eventType, JSON.parse(line.slice(6)));
 						} catch {
 							// Skip malformed data
 						}
@@ -124,13 +117,9 @@ export function useVoicePipeline() {
 				}
 			}
 
-			// Ensure we end in done state
-			setState((prev) => {
-				if (prev.status !== "error") {
-					return { ...prev, status: "done" };
-				}
-				return prev;
-			});
+			setState((prev) =>
+				prev.status !== "error" ? { ...prev, status: "done" } : prev,
+			);
 		} catch (error) {
 			if (abortController.signal.aborted) return;
 			setState((prev) => ({
@@ -143,72 +132,63 @@ export function useVoicePipeline() {
 
 	const abort = useCallback(() => {
 		abortRef.current?.abort();
+		setState((prev) =>
+			prev.status !== "error" &&
+			prev.status !== "done" &&
+			prev.status !== "idle"
+				? { ...prev, status: "done" }
+				: prev,
+		);
 	}, []);
 
-	return { ...state, processAudio, abort };
-}
-
-function handleSSEEvent(
-	event: string,
-	data: Record<string, unknown>,
-	setState: React.Dispatch<React.SetStateAction<VoicePipelineState>>,
-) {
-	switch (event) {
-		case "transcription":
-			setState((prev) => ({
-				...prev,
-				status: "processing",
-				transcription: data.text as string,
-			}));
-			break;
-
-		case "tool_use":
-			setState((prev) => ({
-				...prev,
-				status: "processing",
-				toolCalls: [
-					...prev.toolCalls,
-					{
-						toolName: data.toolName as string,
-						toolInput: data.toolInput,
-					},
-				],
-			}));
-			break;
-
-		case "tool_result":
-			setState((prev) => ({
-				...prev,
-				toolCalls: prev.toolCalls.map((tc) =>
-					tc.toolName === data.toolName && !tc.result
-						? { ...tc, result: data.result as string }
-						: tc,
-				),
-			}));
-			break;
-
-		case "text_delta":
-			setState((prev) => ({
-				...prev,
-				status: "streaming",
-				responseText: prev.responseText + (data.delta as string),
-			}));
-			break;
-
-		case "done":
-			setState((prev) => ({
-				...prev,
-				status: "done",
-				responseText: (data.fullResponse as string) || prev.responseText,
-			}));
-			break;
-
-		case "error":
-			setState((prev) => ({
-				...prev,
-				status: "error",
-				error: data.message as string,
-			}));
-			break;
+	function handleSSEEvent(event: string, data: Record<string, unknown>) {
+		switch (event) {
+			case "transcription":
+				setState((prev) => ({
+					...prev,
+					status: "processing",
+					transcription: data.text as string,
+				}));
+				break;
+			case "tool_use":
+				setState((prev) => ({
+					...prev,
+					status: "processing",
+					toolCalls: [
+						...prev.toolCalls,
+						{ toolName: data.toolName as string, toolInput: data.toolInput },
+					],
+				}));
+				break;
+			case "tool_result":
+				setState((prev) => ({
+					...prev,
+					toolCalls: prev.toolCalls.map((tc) =>
+						tc.toolName === data.toolName && !tc.result
+							? { ...tc, result: data.result as string }
+							: tc,
+					),
+				}));
+				break;
+			case "text_delta":
+				setState((prev) => ({
+					...prev,
+					status: "streaming",
+					responseText: prev.responseText + (data.delta as string),
+				}));
+				break;
+			case "done":
+				setState((prev) => ({ ...prev, status: "done" }));
+				break;
+			case "error":
+				setState((prev) => ({
+					...prev,
+					status: "error",
+					error: data.message as string,
+				}));
+				break;
+		}
 	}
+
+	return { ...state, processAudio, abort };
 }

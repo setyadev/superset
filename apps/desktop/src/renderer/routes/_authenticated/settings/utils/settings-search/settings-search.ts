@@ -313,7 +313,8 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 		id: SETTING_ITEM_ID.BEHAVIOR_VOICE_COMMANDS,
 		section: "behavior",
 		title: "Voice Commands",
-		description: "Enable wake word detection and voice commands",
+		description:
+			'Say "Hey Jarvis" to create tasks, ask questions, and manage your work by voice',
 		keywords: [
 			"features",
 			"voice",
@@ -323,7 +324,6 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"speech",
 			"audio",
 			"jarvis",
-			"sidecar",
 		],
 	},
 	{
