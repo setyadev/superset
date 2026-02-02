@@ -36,8 +36,21 @@ export class SessionDO extends DurableObject<Env> {
 	private sandboxWs: WebSocket | null = null;
 	private sandboxInfo: { sandboxId: string; authenticatedAt: number } | null =
 		null;
-	private pendingMessages: Map<string, { content: string; createdAt: number }> =
-		new Map();
+	private pendingMessages: Map<
+		string,
+		{
+			content: string;
+			createdAt: number;
+			model?: string;
+			author?: { userId: string; githubName: string | null; githubEmail: string | null };
+			attachments?: Array<{
+				type: string;
+				name: string;
+				url?: string;
+				content?: string;
+			}>;
+		}
+	> = new Map();
 	private initialized = false;
 	private isSpawningSandbox = false;
 
@@ -717,11 +730,29 @@ export class SessionDO extends DurableObject<Env> {
 
 				case "prompt":
 					console.log("[SessionDO] Processing prompt message");
-					await this.handlePrompt(ws, clientData.content, clientData.authorId);
+					await this.handlePrompt(
+						ws,
+						clientData.content,
+						clientData.authorId,
+						clientData.model,
+						clientData.attachments,
+					);
 					break;
 
 				case "stop":
 					await this.handleStopFromClient(ws);
+					break;
+
+				case "push":
+					await this.handlePushFromClient(ws, clientData.branchName, clientData.repoOwner, clientData.repoName);
+					break;
+
+				case "snapshot":
+					await this.handleSnapshotFromClient(ws);
+					break;
+
+				case "shutdown":
+					await this.handleShutdownFromClient(ws);
 					break;
 
 				case "ping":
@@ -1017,6 +1048,13 @@ export class SessionDO extends DurableObject<Env> {
 		ws: WebSocket,
 		content: string,
 		authorId: string,
+		model?: string,
+		attachments?: Array<{
+			type: string;
+			name: string;
+			url?: string;
+			content?: string;
+		}>,
 	): Promise<void> {
 		// Validate required fields
 		if (!content || typeof content !== "string") {
@@ -1036,6 +1074,8 @@ export class SessionDO extends DurableObject<Env> {
 			content.length,
 			"authorId =",
 			authorId,
+			"model =",
+			model,
 		);
 
 		// Get session
@@ -1046,6 +1086,32 @@ export class SessionDO extends DurableObject<Env> {
 		}
 
 		const session = rows[0] as unknown as SessionRow;
+
+		// Get participant info for author context
+		const client = this.clients.get(ws);
+		const participantRows = client?.participantId
+			? this.sql
+					.exec(
+						"SELECT * FROM participants WHERE id = ?",
+						client.participantId,
+					)
+					.toArray()
+			: [];
+		const participant =
+			participantRows.length > 0
+				? (participantRows[0] as unknown as ParticipantRow)
+				: null;
+
+		// Build author context for git identity
+		const author = participant
+			? {
+					userId: participant.user_id,
+					githubName: participant.github_name,
+					githubEmail: participant.github_login
+						? `${participant.github_login}@users.noreply.github.com`
+						: null,
+				}
+			: undefined;
 
 		// Create message record (participant_id is null until we implement proper participant management)
 		const messageId = generateId();
@@ -1070,10 +1136,23 @@ export class SessionDO extends DurableObject<Env> {
 			this.broadcast({ type: "state_update", state });
 		}
 
+		// Use per-message model or fall back to session model
+		const effectiveModel = model || session.model;
+
+		// Build rich prompt command
+		const promptCommand: ControlPlaneToSandboxMessage = {
+			type: "prompt",
+			messageId,
+			content,
+			model: effectiveModel,
+			author,
+			attachments,
+		};
+
 		// Forward prompt to sandbox via WebSocket
 		const sandboxWs = this.findSandboxWebSocket();
 		if (sandboxWs) {
-			if (this.sendToSandbox({ type: "prompt", messageId, content })) {
+			if (this.sendToSandbox(promptCommand)) {
 				console.log("[SessionDO] Prompt forwarded to sandbox:", messageId);
 				// Send ack to client indicating prompt was forwarded
 				this.safeSend(ws, {
@@ -1083,18 +1162,34 @@ export class SessionDO extends DurableObject<Env> {
 				});
 			} else {
 				// Sandbox disconnected, queue the message
-				this.pendingMessages.set(messageId, { content, createdAt: Date.now() });
-				console.log("[SessionDO] Sandbox connection lost, queueing message:", messageId);
+				this.pendingMessages.set(messageId, {
+					content,
+					createdAt: Date.now(),
+					model: effectiveModel,
+					author,
+					attachments,
+				});
+				console.log(
+					"[SessionDO] Sandbox connection lost, queueing message:",
+					messageId,
+				);
 				this.safeSend(ws, {
 					type: "prompt_ack",
 					messageId,
 					status: "queued",
-					message: "Sandbox connection lost, message queued for when it reconnects",
+					message:
+						"Sandbox connection lost, message queued for when it reconnects",
 				});
 			}
 		} else {
 			// No sandbox connected, queue the message for when it connects
-			this.pendingMessages.set(messageId, { content, createdAt: Date.now() });
+			this.pendingMessages.set(messageId, {
+				content,
+				createdAt: Date.now(),
+				model: effectiveModel,
+				author,
+				attachments,
+			});
 			console.log(
 				"[SessionDO] Sandbox not connected, message queued:",
 				messageId,
@@ -1104,7 +1199,8 @@ export class SessionDO extends DurableObject<Env> {
 				type: "prompt_ack",
 				messageId,
 				status: "queued",
-				message: "Sandbox not connected. Message queued and will be processed when sandbox connects.",
+				message:
+					"Sandbox not connected. Message queued and will be processed when sandbox connects.",
 			});
 		}
 	}
@@ -1120,6 +1216,101 @@ export class SessionDO extends DurableObject<Env> {
 			console.log("[SessionDO] Cannot send stop - sandbox not connected");
 			this.safeSend(ws, {
 				type: "stop_ack",
+				status: "failed",
+				message: "Sandbox not connected",
+			});
+		}
+	}
+
+	/**
+	 * Handle push request from client.
+	 */
+	private async handlePushFromClient(
+		ws: WebSocket,
+		branchName: string,
+		repoOwner?: string,
+		repoName?: string,
+	): Promise<void> {
+		console.log("[SessionDO] Push requested by client, branch:", branchName);
+
+		// Get session for defaults
+		const rows = this.sql.exec("SELECT * FROM session LIMIT 1").toArray();
+		if (rows.length === 0) {
+			this.safeSend(ws, {
+				type: "push_ack",
+				status: "failed",
+				message: "Session not found",
+			});
+			return;
+		}
+
+		const session = rows[0] as unknown as SessionRow;
+
+		// Build push command with session defaults
+		const pushCommand: ControlPlaneToSandboxMessage = {
+			type: "push",
+			branchName: branchName || session.branch,
+			repoOwner: repoOwner || session.repo_owner,
+			repoName: repoName || session.repo_name,
+		};
+
+		if (this.sendToSandbox(pushCommand)) {
+			this.safeSend(ws, { type: "push_ack", status: "sent" });
+		} else {
+			console.log("[SessionDO] Cannot send push - sandbox not connected");
+			this.safeSend(ws, {
+				type: "push_ack",
+				status: "failed",
+				message: "Sandbox not connected",
+			});
+		}
+	}
+
+	/**
+	 * Handle snapshot request from client.
+	 */
+	private async handleSnapshotFromClient(ws: WebSocket): Promise<void> {
+		console.log("[SessionDO] Snapshot requested by client");
+		if (this.sendToSandbox({ type: "snapshot" })) {
+			this.safeSend(ws, { type: "snapshot_ack", status: "sent" });
+		} else {
+			console.log("[SessionDO] Cannot send snapshot - sandbox not connected");
+			this.safeSend(ws, {
+				type: "snapshot_ack",
+				status: "failed",
+				message: "Sandbox not connected",
+			});
+		}
+	}
+
+	/**
+	 * Handle shutdown request from client.
+	 */
+	private async handleShutdownFromClient(ws: WebSocket): Promise<void> {
+		console.log("[SessionDO] Shutdown requested by client");
+		if (this.sendToSandbox({ type: "shutdown" })) {
+			this.safeSend(ws, { type: "shutdown_ack", status: "sent" });
+
+			// Update session status
+			const rows = this.sql.exec("SELECT * FROM session LIMIT 1").toArray();
+			if (rows.length > 0) {
+				const session = rows[0] as unknown as SessionRow;
+				this.sql.exec(
+					"UPDATE session SET sandbox_status = 'stopped', updated_at = ? WHERE id = ?",
+					Date.now(),
+					session.id,
+				);
+
+				// Broadcast state update
+				const state = this.getSessionState();
+				if (state) {
+					this.broadcast({ type: "state_update", state });
+				}
+			}
+		} else {
+			console.log("[SessionDO] Cannot send shutdown - sandbox not connected");
+			this.safeSend(ws, {
+				type: "shutdown_ack",
 				status: "failed",
 				message: "Sandbox not connected",
 			});
@@ -1420,8 +1611,19 @@ export class SessionDO extends DurableObject<Env> {
 			"pending messages",
 		);
 
-		for (const [messageId, { content }] of this.pendingMessages) {
-			if (this.sendToSandbox({ type: "prompt", messageId, content })) {
+		for (const [
+			messageId,
+			{ content, model, author, attachments },
+		] of this.pendingMessages) {
+			const promptCommand: ControlPlaneToSandboxMessage = {
+				type: "prompt",
+				messageId,
+				content,
+				model,
+				author,
+				attachments,
+			};
+			if (this.sendToSandbox(promptCommand)) {
 				console.log("[SessionDO] Sent pending message:", messageId);
 			} else {
 				console.error("[SessionDO] Failed to send pending message:", messageId);

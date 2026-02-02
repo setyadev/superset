@@ -94,12 +94,42 @@ export type SandboxMessage =
 	| { type: "pong" };
 
 /**
+ * Author info for prompt attribution and git identity.
+ */
+export interface PromptAuthor {
+	userId: string;
+	githubName: string | null;
+	githubEmail: string | null;
+}
+
+/**
  * Messages sent from control plane to sandbox.
  */
 export type ControlPlaneToSandboxMessage =
 	| { type: "sandbox_connected"; sessionId: string }
-	| { type: "prompt"; messageId: string; content: string }
+	| {
+			type: "prompt";
+			messageId: string;
+			content: string;
+			model?: string;
+			author?: PromptAuthor;
+			attachments?: Array<{
+				type: string;
+				name: string;
+				url?: string;
+				content?: string;
+			}>;
+	  }
 	| { type: "stop" }
+	| {
+			type: "push";
+			branchName: string;
+			repoOwner?: string;
+			repoName?: string;
+			githubToken?: string;
+	  }
+	| { type: "snapshot" }
+	| { type: "shutdown" }
 	| { type: "ping" }
 	| { type: "error"; message: string };
 
@@ -108,8 +138,27 @@ export type ControlPlaneToSandboxMessage =
  */
 export type ClientMessage =
 	| { type: "subscribe"; token: string }
-	| { type: "prompt"; content: string; authorId: string }
+	| {
+			type: "prompt";
+			content: string;
+			authorId: string;
+			model?: string;
+			attachments?: Array<{
+				type: string;
+				name: string;
+				url?: string;
+				content?: string;
+			}>;
+	  }
 	| { type: "stop" }
+	| {
+			type: "push";
+			branchName: string;
+			repoOwner?: string;
+			repoName?: string;
+	  }
+	| { type: "snapshot" }
+	| { type: "shutdown" }
 	| { type: "ping" }
 	| { type: "typing" };
 
@@ -149,7 +198,10 @@ export type ServerMessage =
 			status: "forwarded" | "queued";
 			message?: string;
 	  }
-	| { type: "stop_ack"; status: "sent" | "failed"; message?: string };
+	| { type: "stop_ack"; status: "sent" | "failed"; message?: string }
+	| { type: "push_ack"; status: "sent" | "failed"; message?: string }
+	| { type: "snapshot_ack"; status: "sent" | "failed"; message?: string }
+	| { type: "shutdown_ack"; status: "sent" | "failed"; message?: string };
 
 /**
  * Events from the sandbox.
@@ -163,7 +215,13 @@ export interface SandboxEvent {
 		| "error"
 		| "git_sync"
 		| "execution_complete"
-		| "heartbeat";
+		| "heartbeat"
+		| "push_complete"
+		| "push_error"
+		| "ready"
+		| "snapshot_ready"
+		| "step_start"
+		| "step_finish";
 	timestamp: number;
 	data: unknown;
 	messageId?: string;
