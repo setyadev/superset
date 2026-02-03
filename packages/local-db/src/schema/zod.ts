@@ -126,3 +126,23 @@ export const BRANCH_PREFIX_MODES = [
 ] as const;
 
 export type BranchPrefixMode = (typeof BRANCH_PREFIX_MODES)[number];
+
+/**
+ * Font size constraints for validation
+ */
+export const MIN_TERMINAL_FONT_SIZE = 8;
+export const MAX_TERMINAL_FONT_SIZE = 24;
+
+/**
+ * Font settings schema for editor and terminal fonts
+ */
+export const fontSettingsSchema = z.object({
+	editorFont: z.string().nullable(),
+	terminalFont: z.string().nullable(),
+	terminalFontSize: z
+		.number()
+		.min(MIN_TERMINAL_FONT_SIZE)
+		.max(MAX_TERMINAL_FONT_SIZE),
+});
+
+export type FontSettings = z.infer<typeof fontSettingsSchema>;

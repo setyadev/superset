@@ -55,6 +55,47 @@ export const DEFAULT_TERMINAL_LINK_BEHAVIOR = "external-editor" as const;
 export const DEFAULT_TERMINAL_PERSISTENCE = true;
 export const DEFAULT_AUTO_APPLY_DEFAULT_PRESET = true;
 
+// Font size constraints
+export const MIN_TERMINAL_FONT_SIZE = 8;
+export const MAX_TERMINAL_FONT_SIZE = 24;
+export const DEFAULT_TERMINAL_FONT_SIZE = 14;
+
+// Available font options for the editor font selector
+export const EDITOR_FONT_OPTIONS = [
+	{ value: "default", label: "Default" },
+	{ value: "Berkeley Mono", label: "Berkeley Mono" },
+	{ value: "iA Writer Mono", label: "iA Writer Mono" },
+] as const;
+
+// Available font options for the terminal font selector
+export const TERMINAL_FONT_OPTIONS = [
+	{ value: "default", label: "Default" },
+	{ value: "Berkeley Mono", label: "Berkeley Mono" },
+	{ value: "JetBrains Mono", label: "JetBrains Mono" },
+] as const;
+
+// Default font family stacks
+export const DEFAULT_TERMINAL_FONT_FAMILY = [
+	"MesloLGM Nerd Font",
+	"MesloLGM NF",
+	"Menlo",
+	"Monaco",
+	"Consolas",
+	"Liberation Mono",
+	"Courier New",
+	"monospace",
+].join(", ");
+
+export const DEFAULT_EDITOR_FONT_FAMILY =
+	"ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace";
+
+// Default font settings
+export const DEFAULT_FONT_SETTINGS = {
+	editorFont: null as string | null,
+	terminalFont: null as string | null,
+	terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+};
+
 // External links (documentation, help resources, etc.)
 export const EXTERNAL_LINKS = {
 	SETUP_TEARDOWN_SCRIPTS: `${process.env.NEXT_PUBLIC_DOCS_URL}/setup-teardown-scripts`,

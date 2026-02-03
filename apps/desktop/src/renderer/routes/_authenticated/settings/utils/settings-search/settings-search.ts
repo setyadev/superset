@@ -13,6 +13,7 @@ export const SETTING_ITEM_ID = {
 		"organization-members-pending-invitations",
 
 	APPEARANCE_THEME: "appearance-theme",
+	APPEARANCE_FONTS: "appearance-fonts",
 	APPEARANCE_MARKDOWN: "appearance-markdown",
 	APPEARANCE_CUSTOM_THEMES: "appearance-custom-themes",
 
@@ -212,6 +213,25 @@ export const SETTINGS_ITEMS: SettingsItem[] = [
 			"night",
 			"system",
 			"visual",
+		],
+	},
+	{
+		id: SETTING_ITEM_ID.APPEARANCE_FONTS,
+		section: "appearance",
+		title: "Fonts",
+		description: "Customize editor and terminal fonts",
+		keywords: [
+			"appearance",
+			"fonts",
+			"font",
+			"typography",
+			"editor font",
+			"terminal font",
+			"monospace",
+			"berkeley mono",
+			"jetbrains",
+			"ia writer",
+			"font size",
 		],
 	},
 	{

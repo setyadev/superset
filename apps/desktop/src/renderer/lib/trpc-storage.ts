@@ -111,3 +111,28 @@ export const trpcRingtoneStorage = createJSONStorage(() =>
 		},
 	}),
 );
+
+/**
+ * Zustand storage adapter for font settings using tRPC.
+ */
+export const trpcFontStorage = createJSONStorage(() =>
+	createTrpcStorageAdapter({
+		get: async () => {
+			const fontSettings =
+				await electronTrpcClient.settings.getFontSettings.query();
+			return fontSettings;
+		},
+		set: async (input) => {
+			const state = input as {
+				editorFont: string | null;
+				terminalFont: string | null;
+				terminalFontSize: number;
+			};
+			await electronTrpcClient.settings.setFontSettings.mutate({
+				editorFont: state.editorFont,
+				terminalFont: state.terminalFont,
+				terminalFontSize: state.terminalFontSize,
+			});
+		},
+	}),
+);
