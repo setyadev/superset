@@ -114,6 +114,8 @@ export function ChatPane({
 	const sessionId = useTabsStore((s) => s.panes[paneId]?.chat?.sessionId);
 	const paneName = useTabsStore((s) => s.panes[paneId]?.name);
 
+	console.log(`[ChatPane] Render paneId=${paneId} sessionId=${sessionId}`);
+
 	const { data: session } = authClient.useSession();
 	const user = session?.user
 		? { userId: session.user.id, name: session.user.name ?? "Unknown" }
@@ -135,12 +137,20 @@ export function ChatPane({
 		autoConnect: !!user && !!sessionId,
 	});
 
+	console.log(
+		`[ChatPane] connectionStatus=${connectionStatus} isLoading=${isLoading} messages=${messages.length} streaming=${!!streamingMessage}`,
+	);
+
 	const startSessionMutation = electronTrpc.aiChat.startSession.useMutation();
 	const { data: isSessionActive, refetch: refetchIsActive } =
 		electronTrpc.aiChat.isSessionActive.useQuery(
 			{ sessionId: sessionId ?? "" },
 			{ enabled: !!sessionId },
 		);
+
+	console.log(
+		`[ChatPane] isSessionActive=${isSessionActive} user=${!!user}`,
+	);
 
 	const { data: workspaceGroups } =
 		electronTrpc.workspaces.getAllGrouped.useQuery();
@@ -165,9 +175,15 @@ export function ChatPane({
 		}
 
 		hasAutoStarted.current = true;
+		console.log(
+			`[ChatPane] Auto-starting session ${sessionId} in ${mostRecentWorkspacePath}`,
+		);
 		startSessionMutation
 			.mutateAsync({ sessionId, cwd: mostRecentWorkspacePath })
-			.then(() => refetchIsActive())
+			.then(() => {
+				console.log(`[ChatPane] Session started successfully`);
+				return refetchIsActive();
+			})
 			.catch((err) =>
 				console.error("[ChatPane] Failed to auto-start session:", err),
 			);
@@ -182,10 +198,14 @@ export function ChatPane({
 	const [isSending, setIsSending] = useState(false);
 	const handleSend = useCallback(
 		async (content: string) => {
+			console.log(`[ChatPane] Sending message: "${content.slice(0, 50)}..."`);
 			setIsSending(true);
 			setDraft("");
 			try {
 				await sendMessage(content);
+				console.log(`[ChatPane] Message sent successfully`);
+			} catch (err) {
+				console.error("[ChatPane] Failed to send message:", err);
 			} finally {
 				setIsSending(false);
 			}
@@ -215,6 +235,9 @@ export function ChatPane({
 			toolResults: m.toolResults,
 		}));
 		if (streamingMessage) {
+			console.log(
+				`[ChatPane] Streaming message: content="${streamingMessage.content.slice(0, 80)}..." blocks=${streamingMessage.contentBlocks.length}`,
+			);
 			result.push({
 				id: "streaming",
 				role: "assistant",
@@ -223,6 +246,11 @@ export function ChatPane({
 				toolResults: streamingMessage.toolResults,
 				isStreaming: true,
 			});
+		}
+		if (result.length > 0) {
+			console.log(
+				`[ChatPane] allMessages: ${result.length} messages (last: ${result[result.length - 1]?.role})`,
+			);
 		}
 		return result;
 	}, [messages, streamingMessage]);
