@@ -32,7 +32,7 @@ import {
 import { cn } from "@superset/ui/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	LuArchive,
 	LuArchiveRestore,
@@ -97,7 +97,7 @@ interface CloudSidebarProps {
 	className?: string;
 }
 
-function formatRelativeTime(date: Date): string {
+function _formatRelativeTime(date: Date): string {
 	const now = new Date();
 	const diff = now.getTime() - new Date(date).getTime();
 	const seconds = Math.floor(diff / 1000);
@@ -129,6 +129,12 @@ export function CloudSidebar({
 	const [searchQuery, setSearchQuery] = useState("");
 	const [showArchived, setShowArchived] = useState(false);
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+	const [isMounted, setIsMounted] = useState(false);
+
+	// Track hydration to avoid Radix ID mismatch
+	useEffect(() => {
+		setIsMounted(true);
+	}, []);
 
 	const { data: polledWorkspaces } = useQuery({
 		...trpc.cloudWorkspace.list.queryOptions(),
@@ -319,83 +325,97 @@ export function CloudSidebar({
 								</SidebarGroup>
 							)}
 
-							<SidebarGroup>
-								<Collapsible open={showArchived} onOpenChange={setShowArchived}>
-									<CollapsibleTrigger asChild>
-										<SidebarGroupLabel className="cursor-pointer hover:bg-sidebar-accent rounded-md gap-2">
-											{showArchived ? (
-												<LuChevronDown className="size-4" />
-											) : (
-												<LuChevronRight className="size-4" />
-											)}
-											<LuArchive className="size-4" />
-											<span>Archived</span>
-											{archivedWorkspaces.length > 0 && (
-												<span className="ml-auto text-muted-foreground">
-													{archivedWorkspaces.length}
-												</span>
-											)}
-										</SidebarGroupLabel>
-									</CollapsibleTrigger>
-									<CollapsibleContent>
-										<SidebarGroupContent>
-											{archivedWorkspaces.length === 0 ? (
-												<div className="px-2 py-3 text-xs text-muted-foreground">
-													No archived sessions
-												</div>
-											) : (
-												<SidebarMenu>
-													{archivedWorkspaces.map((workspace) => (
-														<SidebarMenuItem
-															key={workspace.id}
-															className="group/archived"
-														>
-															<SidebarMenuButton className="text-muted-foreground">
-																<div className="size-2 rounded-full bg-muted-foreground/20 shrink-0" />
-																<span className="truncate">
-																	{workspace.title ||
-																		`${workspace.repoOwner}/${workspace.repoName}`}
-																</span>
-															</SidebarMenuButton>
-															<div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/archived:opacity-100 transition-opacity">
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	className="size-6"
-																	onClick={() =>
-																		unarchiveMutation.mutate({
-																			id: workspace.id,
-																		})
-																	}
-																	disabled={unarchiveMutation.isPending}
-																>
-																	{unarchiveMutation.isPending &&
-																	unarchiveMutation.variables?.id ===
-																		workspace.id ? (
-																		<LuLoader className="size-3 animate-spin" />
-																	) : (
-																		<LuArchiveRestore className="size-3" />
-																	)}
-																</Button>
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	className="size-6 text-destructive hover:text-destructive"
-																	onClick={() =>
-																		setDeleteConfirmId(workspace.id)
-																	}
-																>
-																	<LuTrash2 className="size-3" />
-																</Button>
-															</div>
-														</SidebarMenuItem>
-													))}
-												</SidebarMenu>
-											)}
-										</SidebarGroupContent>
-									</CollapsibleContent>
-								</Collapsible>
-							</SidebarGroup>
+							{/* Only render Collapsible after hydration to avoid Radix ID mismatch */}
+							{isMounted ? (
+								<SidebarGroup>
+									<Collapsible
+										open={showArchived}
+										onOpenChange={setShowArchived}
+									>
+										<CollapsibleTrigger asChild>
+											<SidebarGroupLabel className="cursor-pointer hover:bg-sidebar-accent rounded-md gap-2">
+												{showArchived ? (
+													<LuChevronDown className="size-4" />
+												) : (
+													<LuChevronRight className="size-4" />
+												)}
+												<LuArchive className="size-4" />
+												<span>Archived</span>
+												{archivedWorkspaces.length > 0 && (
+													<span className="ml-auto text-muted-foreground">
+														{archivedWorkspaces.length}
+													</span>
+												)}
+											</SidebarGroupLabel>
+										</CollapsibleTrigger>
+										<CollapsibleContent>
+											<SidebarGroupContent>
+												{archivedWorkspaces.length === 0 ? (
+													<div className="px-2 py-3 text-xs text-muted-foreground">
+														No archived sessions
+													</div>
+												) : (
+													<SidebarMenu>
+														{archivedWorkspaces.map((workspace) => (
+															<SidebarMenuItem
+																key={workspace.id}
+																className="group/archived"
+															>
+																<SidebarMenuButton className="text-muted-foreground">
+																	<div className="size-2 rounded-full bg-muted-foreground/20 shrink-0" />
+																	<span className="truncate">
+																		{workspace.title ||
+																			`${workspace.repoOwner}/${workspace.repoName}`}
+																	</span>
+																</SidebarMenuButton>
+																<div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover/archived:opacity-100 transition-opacity">
+																	<Button
+																		variant="ghost"
+																		size="icon"
+																		className="size-6"
+																		onClick={() =>
+																			unarchiveMutation.mutate({
+																				id: workspace.id,
+																			})
+																		}
+																		disabled={unarchiveMutation.isPending}
+																	>
+																		{unarchiveMutation.isPending &&
+																		unarchiveMutation.variables?.id ===
+																			workspace.id ? (
+																			<LuLoader className="size-3 animate-spin" />
+																		) : (
+																			<LuArchiveRestore className="size-3" />
+																		)}
+																	</Button>
+																	<Button
+																		variant="ghost"
+																		size="icon"
+																		className="size-6 text-destructive hover:text-destructive"
+																		onClick={() =>
+																			setDeleteConfirmId(workspace.id)
+																		}
+																	>
+																		<LuTrash2 className="size-3" />
+																	</Button>
+																</div>
+															</SidebarMenuItem>
+														))}
+													</SidebarMenu>
+												)}
+											</SidebarGroupContent>
+										</CollapsibleContent>
+									</Collapsible>
+								</SidebarGroup>
+							) : (
+								<SidebarGroup>
+									<SidebarGroupLabel className="gap-2">
+										<LuChevronRight className="size-4" />
+										<LuArchive className="size-4" />
+										<span>Archived</span>
+									</SidebarGroupLabel>
+								</SidebarGroup>
+							)}
 						</>
 					)}
 				</SidebarContent>
@@ -413,7 +433,9 @@ export function CloudSidebar({
 			>
 				<AlertDialogContent>
 					<AlertDialogHeader>
-						<AlertDialogTitle>Delete this session permanently?</AlertDialogTitle>
+						<AlertDialogTitle>
+							Delete this session permanently?
+						</AlertDialogTitle>
 						<AlertDialogDescription>
 							This action cannot be undone. The session and all its data will be
 							permanently deleted.
@@ -423,7 +445,8 @@ export function CloudSidebar({
 						<AlertDialogCancel>Cancel</AlertDialogCancel>
 						<AlertDialogAction
 							onClick={() =>
-								deleteConfirmId && deleteMutation.mutate({ id: deleteConfirmId })
+								deleteConfirmId &&
+								deleteMutation.mutate({ id: deleteConfirmId })
 							}
 							disabled={deleteMutation.isPending}
 							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"

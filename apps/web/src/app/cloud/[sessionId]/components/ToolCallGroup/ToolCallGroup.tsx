@@ -1,7 +1,11 @@
 "use client";
 
+import { Tool, ToolContent } from "@superset/ui/ai-elements/tool";
+import { Badge } from "@superset/ui/badge";
+import { CollapsibleTrigger } from "@superset/ui/collapsible";
+import { cn } from "@superset/ui/utils";
+import { ChevronDownIcon } from "lucide-react";
 import { useState } from "react";
-import { LuChevronRight } from "react-icons/lu";
 
 import type { CloudEvent } from "../../hooks";
 import { formatToolGroup } from "../../lib/tool-formatters";
@@ -53,30 +57,42 @@ export function ToolCallGroup({ events, groupId }: ToolCallGroupProps) {
 	}
 
 	return (
-		<div className="py-0.5">
-			<button
-				onClick={() => setIsExpanded(!isExpanded)}
-				className="w-full flex items-center gap-2 text-xs text-left hover:bg-muted/50 px-1.5 py-1 -mx-1.5 rounded-md transition-colors"
-			>
-				<LuChevronRight
-					className={`size-3 text-muted-foreground shrink-0 transition-transform duration-200 ${
-						isExpanded ? "rotate-90" : ""
-					}`}
-				/>
-				<ToolIcon name={formatted.icon} className="shrink-0" />
-				<span className="font-medium text-foreground shrink-0">
-					{formatted.toolName}
-				</span>
-				<span className="text-muted-foreground/60 truncate">
-					{formatted.summary}
-				</span>
-				<span className="text-[10px] text-muted-foreground/40 ml-auto shrink-0 tabular-nums">
-					{time}
-				</span>
-			</button>
+		<Tool
+			open={isExpanded}
+			onOpenChange={setIsExpanded}
+			className="mb-2 border-border/50 bg-transparent"
+		>
+			<CollapsibleTrigger className="flex w-full items-center justify-between gap-2 p-2 text-xs hover:bg-muted/50 rounded-md transition-colors">
+				<div className="flex items-center gap-2 min-w-0">
+					<ToolIcon name={formatted.icon} className="shrink-0 size-4" />
+					<span className="font-medium text-foreground shrink-0">
+						{formatted.toolName}
+					</span>
+					<Badge
+						variant="secondary"
+						className="rounded-full text-[10px] px-1.5 py-0"
+					>
+						{formatted.count}
+					</Badge>
+					<span className="text-muted-foreground/70 truncate">
+						{formatted.summary}
+					</span>
+				</div>
+				<div className="flex items-center gap-2 shrink-0">
+					<span className="text-[10px] text-muted-foreground/50 tabular-nums">
+						{time}
+					</span>
+					<ChevronDownIcon
+						className={cn(
+							"size-4 text-muted-foreground transition-transform duration-200",
+							isExpanded && "rotate-180",
+						)}
+					/>
+				</div>
+			</CollapsibleTrigger>
 
-			{isExpanded && (
-				<div className="ml-4 mt-1 pl-3 border-l border-border/50">
+			<ToolContent>
+				<div className="pl-4 border-l-2 border-border/30 ml-3 space-y-1">
 					{events.map((event, index) => (
 						<ToolCallItem
 							key={`${groupId}-${index}`}
@@ -87,7 +103,7 @@ export function ToolCallGroup({ events, groupId }: ToolCallGroupProps) {
 						/>
 					))}
 				</div>
-			)}
-		</div>
+			</ToolContent>
+		</Tool>
 	);
 }

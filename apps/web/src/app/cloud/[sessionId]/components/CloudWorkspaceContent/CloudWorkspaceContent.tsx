@@ -1,64 +1,41 @@
 "use client";
 
 import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@superset/ui/alert-dialog";
-import { Badge } from "@superset/ui/badge";
-import { Button } from "@superset/ui/button";
+	CodeBlock,
+	CodeBlockCopyButton,
+} from "@superset/ui/ai-elements/code-block";
 import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuSeparator,
-	DropdownMenuTrigger,
-} from "@superset/ui/dropdown-menu";
-import { Input } from "@superset/ui/input";
+	Message,
+	MessageContent,
+	MessageResponse,
+} from "@superset/ui/ai-elements/message";
+import {
+	PromptInput,
+	PromptInputFooter,
+	PromptInputSubmit,
+	PromptInputTextarea,
+	PromptInputTools,
+} from "@superset/ui/ai-elements/prompt-input";
+import { Shimmer } from "@superset/ui/ai-elements/shimmer";
 import { ScrollArea } from "@superset/ui/scroll-area";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@superset/ui/sidebar";
-import { Textarea } from "@superset/ui/textarea";
-import { cn } from "@superset/ui/utils";
-import { useMutation } from "@tanstack/react-query";
+import { SidebarInset, SidebarProvider } from "@superset/ui/sidebar";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-	LuArchive,
-	LuArrowUp,
 	LuCheck,
-	LuEllipsis,
-	LuExternalLink,
-	LuFile,
 	LuGitBranch,
-	LuGithub,
-	LuGitPullRequest,
-	LuGlobe,
 	LuLoader,
-	LuPencil,
-	LuSquare,
 	LuTerminal,
-	LuWifi,
-	LuWifiOff,
 	LuX,
 } from "react-icons/lu";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import { env } from "@/env";
-import { useTRPC } from "@/trpc/react";
-import { CloudSidebar, type CloudWorkspace } from "../../../components/CloudSidebar";
 import {
-	type Artifact,
-	type CloudEvent,
-	type FileChange,
-	type ParticipantPresence,
-	useCloudSession,
-} from "../../hooks";
+	CloudSidebar,
+	type CloudWorkspace,
+} from "../../../components/CloudSidebar";
+import { type CloudEvent, useCloudSession } from "../../hooks";
+import { CloudWorkspaceHeader } from "../CloudWorkspaceHeader";
 import { ToolCallGroup } from "../ToolCallGroup";
 
 type GroupedEvent =
@@ -170,79 +147,14 @@ export function CloudWorkspaceContent({
 	workspace,
 	workspaces: initialWorkspaces,
 }: CloudWorkspaceContentProps) {
-	const trpc = useTRPC();
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const initialPromptRef = useRef<string | null>(null);
 	const hasSentInitialPrompt = useRef(false);
 
 	const [promptInput, setPromptInput] = useState("");
-	const [isEditingTitle, setIsEditingTitle] = useState(false);
-	const [editedTitle, setEditedTitle] = useState(workspace.title);
-	const [isMounted, setIsMounted] = useState(false);
-	const [showArchiveDialog, setShowArchiveDialog] = useState(false);
 	const scrollAreaRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
-	const titleInputRef = useRef<HTMLInputElement>(null);
-
-	// Track hydration to avoid Radix ID mismatch
-	useEffect(() => {
-		setIsMounted(true);
-	}, []);
-
-	// Update title mutation
-	const updateMutation = useMutation(
-		trpc.cloudWorkspace.update.mutationOptions({
-			onSuccess: () => {
-				setIsEditingTitle(false);
-				// Refresh the page to get updated server data (sidebar uses server-fetched data)
-				router.refresh();
-			},
-		}),
-	);
-
-	// Archive mutation
-	const archiveMutation = useMutation(
-		trpc.cloudWorkspace.archive.mutationOptions({
-			onSuccess: () => {
-				router.push("/cloud");
-			},
-		}),
-	);
-
-	const handleTitleSave = useCallback(() => {
-		if (editedTitle.trim() && editedTitle !== workspace.title) {
-			updateMutation.mutate({ id: workspace.id, title: editedTitle.trim() });
-		} else {
-			setIsEditingTitle(false);
-			setEditedTitle(workspace.title);
-		}
-	}, [editedTitle, workspace.title, workspace.id, updateMutation]);
-
-	const handleTitleKeyDown = useCallback(
-		(e: React.KeyboardEvent) => {
-			if (e.key === "Enter") {
-				e.preventDefault();
-				handleTitleSave();
-			} else if (e.key === "Escape") {
-				setIsEditingTitle(false);
-				setEditedTitle(workspace.title);
-			}
-		},
-		[handleTitleSave, workspace.title],
-	);
-
-	const handleArchive = useCallback(() => {
-		archiveMutation.mutate({ id: workspace.id });
-	}, [archiveMutation, workspace.id]);
-
-	// Focus title input when editing starts
-	useEffect(() => {
-		if (isEditingTitle && titleInputRef.current) {
-			titleInputRef.current.focus();
-			titleInputRef.current.select();
-		}
-	}, [isEditingTitle]);
 
 	const {
 		isConnected,
@@ -273,7 +185,7 @@ export function CloudWorkspaceContent({
 	const isExecuting = isProcessing || sessionState?.sandboxStatus === "running";
 	const canSendPrompt = isConnected && isSandboxReady && !isProcessing;
 
-	// Auto-scroll to bottom when new events arrive
+	// Auto-scroll to bottom when new events arrive or processing state changes
 	useEffect(() => {
 		if (scrollAreaRef.current) {
 			const scrollContainer = scrollAreaRef.current.querySelector(
@@ -293,7 +205,7 @@ export function CloudWorkspaceContent({
 		}
 	}, [promptInput, canSendPrompt, sendPrompt]);
 
-	const handleKeyDown = useCallback(
+	const _handleKeyDown = useCallback(
 		(e: React.KeyboardEvent) => {
 			if (e.key === "Enter" && !e.shiftKey) {
 				e.preventDefault();
@@ -384,141 +296,17 @@ export function CloudWorkspaceContent({
 			/>
 
 			<SidebarInset>
-				{/* Header */}
-				<header className="h-14 flex items-center gap-3 border-b px-4">
-					<SidebarTrigger />
-					<div className="flex-1 min-w-0">
-						{isEditingTitle ? (
-							<div className="flex items-center gap-1">
-								<Input
-									ref={titleInputRef}
-									value={editedTitle}
-									onChange={(e) => setEditedTitle(e.target.value)}
-									onKeyDown={handleTitleKeyDown}
-									onBlur={handleTitleSave}
-									className="h-7 text-sm font-semibold"
-									disabled={updateMutation.isPending}
-								/>
-								{updateMutation.isPending && (
-									<LuLoader className="size-4 animate-spin" />
-								)}
-							</div>
-						) : (
-							<button
-								type="button"
-								onClick={() => setIsEditingTitle(true)}
-								className="text-sm font-semibold truncate hover:text-muted-foreground transition-colors text-left w-full flex items-center gap-1 group"
-							>
-								<span className="truncate">{workspace.title}</span>
-								<LuPencil className="size-3 opacity-0 group-hover:opacity-50 transition-opacity shrink-0" />
-							</button>
-						)}
-						<div className="flex items-center gap-2 text-xs text-muted-foreground">
-							<LuGithub className="size-3" />
-							<span className="truncate">
-								{workspace.repoOwner}/{workspace.repoName}
-							</span>
-							<LuGitBranch className="size-3" />
-							<span className="truncate">{workspace.branch}</span>
-						</div>
-					</div>
-					<div className="flex items-center gap-2 shrink-0">
-						{/* Connection status */}
-						<Badge
-							variant={isConnected ? "default" : "secondary"}
-							className="gap-1"
-						>
-							{isConnecting || isReconnecting ? (
-								<LuLoader className="size-3 animate-spin" />
-							) : isConnected ? (
-								<LuWifi className="size-3" />
-							) : (
-								<LuWifiOff className="size-3" />
-							)}
-							{isReconnecting
-								? `Reconnecting (${reconnectAttempt}/5)...`
-								: isConnecting
-									? "Connecting..."
-									: isConnected
-										? "Connected"
-										: "Disconnected"}
-						</Badge>
-						<Badge variant="outline">{workspace.status}</Badge>
-						{(sessionState?.sandboxStatus ||
-							workspace.sandboxStatus ||
-							isSpawning) && (
-							<Badge
-								variant={
-									(sessionState?.sandboxStatus || workspace.sandboxStatus) ===
-									"ready"
-										? "default"
-										: "secondary"
-								}
-								className="gap-1"
-							>
-								{(isSpawning ||
-									sessionState?.sandboxStatus === "warming" ||
-									sessionState?.sandboxStatus === "syncing") && (
-									<LuLoader className="size-3 animate-spin" />
-								)}
-								{isSpawning
-									? spawnAttempt > 0
-										? `Spawning (${spawnAttempt + 1}/${maxSpawnAttempts})...`
-										: "Spawning..."
-									: sessionState?.sandboxStatus === "warming"
-										? "Warming..."
-										: sessionState?.sandboxStatus || workspace.sandboxStatus}
-							</Badge>
-						)}
-						{/* Artifacts - PR and Preview links */}
-						{sessionState?.artifacts && sessionState.artifacts.length > 0 && (
-							<div className="flex items-center gap-1">
-								{sessionState.artifacts.map((artifact) => (
-									<ArtifactButton key={artifact.id} artifact={artifact} />
-								))}
-							</div>
-						)}
-						{/* Files changed indicator */}
-						{sessionState?.filesChanged &&
-							sessionState.filesChanged.length > 0 &&
-							isMounted && (
-								<FilesChangedDropdown files={sessionState.filesChanged} />
-							)}
-						{/* Participant avatars */}
-						{sessionState?.participants &&
-							sessionState.participants.length > 0 && (
-								<ParticipantAvatars participants={sessionState.participants} />
-							)}
-						{/* Session menu - only render after hydration to avoid Radix ID mismatch */}
-						{isMounted ? (
-							<DropdownMenu>
-								<DropdownMenuTrigger asChild>
-									<Button variant="ghost" size="icon" className="size-8">
-										<LuEllipsis className="size-4" />
-									</Button>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent align="end">
-									<DropdownMenuItem onClick={() => setIsEditingTitle(true)}>
-										<LuPencil className="size-4 mr-2" />
-										Rename
-									</DropdownMenuItem>
-									<DropdownMenuSeparator />
-									<DropdownMenuItem
-										onClick={() => setShowArchiveDialog(true)}
-										className="text-destructive focus:text-destructive"
-									>
-										<LuArchive className="size-4 mr-2" />
-										Archive Session
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						) : (
-							<Button variant="ghost" size="icon" className="size-8">
-								<LuEllipsis className="size-4" />
-							</Button>
-						)}
-					</div>
-				</header>
+				<CloudWorkspaceHeader
+					workspace={workspace}
+					sessionState={sessionState}
+					isConnected={isConnected}
+					isConnecting={isConnecting}
+					isReconnecting={isReconnecting}
+					reconnectAttempt={reconnectAttempt}
+					isSpawning={isSpawning}
+					spawnAttempt={spawnAttempt}
+					maxSpawnAttempts={maxSpawnAttempts}
+				/>
 
 				{/* Main content area */}
 				<main className="flex min-h-0 flex-1 flex-col">
@@ -554,9 +342,9 @@ export function CloudWorkspaceContent({
 							{isLoadingHistory && isConnected && events.length === 0 && (
 								<div className="flex items-center justify-center py-4">
 									<LuLoader className="size-5 animate-spin text-muted-foreground" />
-									<span className="ml-2 text-sm text-muted-foreground">
+									<Shimmer className="ml-2 text-sm text-muted-foreground">
 										Loading history...
-									</span>
+									</Shimmer>
 								</div>
 							)}
 
@@ -604,9 +392,9 @@ export function CloudWorkspaceContent({
 										<div className="size-2 rounded-full bg-primary animate-pulse" />
 										<div className="absolute size-4 rounded-full border-2 border-primary/30 animate-ping" />
 									</div>
-									<span className="text-sm text-muted-foreground font-medium animate-pulse">
+									<Shimmer className="text-sm text-muted-foreground font-medium">
 										Claude is thinking...
-									</span>
+									</Shimmer>
 								</div>
 							)}
 						</div>
@@ -616,18 +404,23 @@ export function CloudWorkspaceContent({
 				{/* Prompt input - sticky at bottom */}
 				<div className="sticky bottom-0 px-4 pb-4 pt-2 bg-gradient-to-t from-background via-background to-transparent relative z-10">
 					<div className="max-w-3xl mx-auto">
-						<div className="relative">
-							<Textarea
-								ref={textareaRef}
+						<PromptInput
+							onSubmit={({ text }) => {
+								if (text.trim() && canSendPrompt) {
+									sendPrompt(text.trim());
+									setPromptInput("");
+								}
+							}}
+							className="rounded-xl"
+						>
+							<PromptInputTextarea
 								value={promptInput}
 								onChange={(e) => {
 									setPromptInput(e.target.value);
-									// Trigger sandbox pre-warming on first keystroke
 									if (e.target.value.length > 0) {
 										sendTyping();
 									}
 								}}
-								onKeyDown={handleKeyDown}
 								placeholder={
 									!isConnected
 										? "Connecting to cloud workspace..."
@@ -642,69 +435,26 @@ export function CloudWorkspaceContent({
 														: "What do you want to build?"
 								}
 								disabled={!canSendPrompt}
-								rows={1}
-								className="min-h-[52px] max-h-[200px] resize-none pr-14 rounded-xl border-border bg-background shadow-sm focus-visible:ring-1 focus-visible:ring-primary/50"
+								className="min-h-12"
 							/>
-							<div className="absolute right-2 bottom-2 flex items-center gap-1">
-								{isExecuting ? (
-									<Button
-										variant="destructive"
-										size="icon"
-										onClick={sendStop}
-										disabled={!isConnected}
-										className="size-8 rounded-lg shrink-0"
-									>
-										<LuSquare className="size-4" />
-									</Button>
-								) : (
-									<Button
-										onClick={handleSendPrompt}
-										disabled={!canSendPrompt || !promptInput.trim()}
-										size="icon"
-										className="size-8 rounded-lg shrink-0 bg-foreground text-background hover:bg-foreground/90"
-									>
-										{!isSandboxReady && isConnected ? (
-											<LuLoader className="size-4 animate-spin" />
-										) : (
-											<LuArrowUp className="size-4" />
-										)}
-									</Button>
-								)}
-							</div>
-						</div>
+							<PromptInputFooter>
+								<PromptInputTools />
+								<PromptInputSubmit
+									status={
+										isProcessing
+											? "streaming"
+											: !isSandboxReady && isConnected
+												? "submitted"
+												: undefined
+									}
+									onStop={sendStop}
+									disabled={!canSendPrompt || !promptInput.trim()}
+								/>
+							</PromptInputFooter>
+						</PromptInput>
 					</div>
 				</div>
 			</SidebarInset>
-
-			{/* Archive Confirmation Dialog */}
-			<AlertDialog open={showArchiveDialog} onOpenChange={setShowArchiveDialog}>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>Archive this session?</AlertDialogTitle>
-						<AlertDialogDescription>
-							This will archive the session and stop the cloud sandbox. You can
-							view and restore archived sessions from the home page.
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>Cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={handleArchive}
-							disabled={archiveMutation.isPending}
-							className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-						>
-							{archiveMutation.isPending ? (
-								<>
-									<LuLoader className="size-4 mr-2 animate-spin" />
-									Archiving...
-								</>
-							) : (
-								"Archive"
-							)}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
 		</SidebarProvider>
 	);
 }
@@ -730,15 +480,25 @@ function EventItem({ event }: EventItemProps) {
 				return (
 					<div className="space-y-2">
 						{data.error ? (
-							<pre className="text-xs bg-destructive/10 text-destructive p-3 rounded-lg overflow-x-auto font-mono">
-								{data.error}
-							</pre>
+							<CodeBlock
+								code={data.error}
+								language="log"
+								className="text-xs border-destructive/50 bg-destructive/10 max-h-40 overflow-y-auto"
+							>
+								<CodeBlockCopyButton className="size-6" />
+							</CodeBlock>
 						) : (
-							<pre className="text-xs bg-muted/30 border border-border/50 p-3 rounded-lg overflow-x-auto max-h-40 overflow-y-auto font-mono text-foreground/80">
-								{typeof data.result === "string"
-									? data.result
-									: JSON.stringify(data.result, null, 2)}
-							</pre>
+							<CodeBlock
+								code={
+									typeof data.result === "string"
+										? data.result
+										: JSON.stringify(data.result, null, 2)
+								}
+								language="json"
+								className="text-xs border-border/50 max-h-40 overflow-y-auto"
+							>
+								<CodeBlockCopyButton className="size-6" />
+							</CodeBlock>
 						)}
 					</div>
 				);
@@ -790,9 +550,13 @@ function EventItem({ event }: EventItemProps) {
 
 			default:
 				return (
-					<pre className="text-xs text-muted-foreground/60 font-mono">
-						{JSON.stringify(event.data, null, 2)}
-					</pre>
+					<CodeBlock
+						code={JSON.stringify(event.data, null, 2)}
+						language="json"
+						className="text-xs border-border/50"
+					>
+						<CodeBlockCopyButton className="size-6" />
+					</CodeBlock>
 				);
 		}
 	};
@@ -807,261 +571,33 @@ function EventItem({ event }: EventItemProps) {
 
 function UserMessage({ content }: { content: string }) {
 	return (
-		<div className="flex justify-start">
-			<div className="max-w-[85%] rounded-xl bg-muted/50 border border-border/50 px-4 py-2.5 shadow-sm">
-				<p className="text-sm whitespace-pre-wrap leading-relaxed text-foreground">
-					{content}
-				</p>
-			</div>
-		</div>
-	);
-}
-
-function CopyButton({ text }: { text: string }) {
-	const [copied, setCopied] = useState(false);
-
-	const handleCopy = async () => {
-		try {
-			await navigator.clipboard.writeText(text);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 2000);
-		} catch (err) {
-			console.error("Failed to copy:", err);
-		}
-	};
-
-	return (
-		<button
-			onClick={handleCopy}
-			className="absolute top-2 right-2 p-1.5 rounded-md bg-background/80 hover:bg-background border border-border/50 text-muted-foreground hover:text-foreground transition-all opacity-0 group-hover/code:opacity-100"
-			title={copied ? "Copied!" : "Copy code"}
-		>
-			{copied ? (
-				<LuCheck className="size-3.5" />
-			) : (
-				<svg
-					className="size-3.5"
-					fill="none"
-					stroke="currentColor"
-					viewBox="0 0 24 24"
-				>
-					<rect
-						x="9"
-						y="9"
-						width="13"
-						height="13"
-						rx="2"
-						ry="2"
-						strokeWidth="2"
-					/>
-					<path
-						d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-						strokeWidth="2"
-					/>
-				</svg>
-			)}
-		</button>
+		<Message from="user">
+			<MessageContent>
+				<p className="whitespace-pre-wrap leading-relaxed">{content}</p>
+			</MessageContent>
+		</Message>
 	);
 }
 
 function AssistantMessage({ text }: { text: string }) {
 	return (
-		<div className="group/message">
-			<div
-				className="prose prose-sm dark:prose-invert max-w-none
-				prose-p:text-foreground/80 prose-p:my-1 prose-p:leading-relaxed prose-p:text-sm
-				prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1
-				prose-h1:text-base prose-h2:text-sm prose-h3:text-sm
-				prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-li:text-foreground/80 prose-li:text-sm
-				prose-pre:bg-transparent prose-pre:p-0 prose-pre:my-2
-				prose-code:text-foreground prose-code:before:content-none prose-code:after:content-none
-				prose-blockquote:border-l-2 prose-blockquote:border-foreground/20 prose-blockquote:pl-4 prose-blockquote:text-foreground/70 prose-blockquote:not-italic
-				prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline
-				prose-strong:text-foreground prose-strong:font-medium
-			"
-			>
-				<ReactMarkdown
-					remarkPlugins={[remarkGfm]}
-					components={{
-						pre: ({ children, ...props }) => {
-							// Extract code content for copy button using a ref
-							const extractText = (node: React.ReactNode): string => {
-								if (typeof node === "string") return node;
-								if (typeof node === "number") return String(node);
-								if (Array.isArray(node)) return node.map(extractText).join("");
-								if (node && typeof node === "object" && "props" in node) {
-									const element = node as React.ReactElement<{
-										children?: React.ReactNode;
-									}>;
-									return extractText(element.props.children);
-								}
-								return "";
-							};
-							const codeContent = extractText(children).replace(/\n$/, "");
-
-							return (
-								<div className="relative group/code rounded-xl bg-muted/50 border border-border overflow-hidden my-2">
-									<CopyButton text={codeContent} />
-									<pre
-										className="overflow-x-auto p-4 text-sm font-mono"
-										{...props}
-									>
-										{children}
-									</pre>
-								</div>
-							);
-						},
-						code: ({ className, children, ...props }) => {
-							const isInline = !className;
-							if (isInline) {
-								return (
-									<code
-										className="rounded bg-foreground/[0.06] dark:bg-foreground/[0.1] px-1.5 py-0.5 text-[85%] font-mono"
-										{...props}
-									>
-										{children}
-									</code>
-								);
-							}
-							return (
-								<code className="font-mono text-sm" {...props}>
-									{children}
-								</code>
-							);
-						},
-					}}
+		<Message from="assistant">
+			<MessageContent>
+				<MessageResponse
+					className="prose prose-sm dark:prose-invert max-w-none
+						prose-p:text-foreground/80 prose-p:my-1 prose-p:leading-relaxed prose-p:text-sm
+						prose-headings:text-foreground prose-headings:font-semibold prose-headings:mt-3 prose-headings:mb-1
+						prose-h1:text-base prose-h2:text-sm prose-h3:text-sm
+						prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-li:text-foreground/80 prose-li:text-sm
+						prose-pre:bg-muted/50 prose-pre:border prose-pre:border-border prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-2
+						prose-code:text-foreground prose-code:before:content-none prose-code:after:content-none
+						prose-blockquote:border-l-2 prose-blockquote:border-foreground/20 prose-blockquote:pl-4 prose-blockquote:text-foreground/70 prose-blockquote:not-italic
+						prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline
+						prose-strong:text-foreground prose-strong:font-medium"
 				>
 					{text}
-				</ReactMarkdown>
-			</div>
-		</div>
-	);
-}
-
-function ArtifactButton({ artifact }: { artifact: Artifact }) {
-	if (!artifact.url) return null;
-
-	const getIcon = () => {
-		switch (artifact.type) {
-			case "pr":
-				return <LuGitPullRequest className="size-3" />;
-			case "preview":
-				return <LuGlobe className="size-3" />;
-			default:
-				return <LuExternalLink className="size-3" />;
-		}
-	};
-
-	const getLabel = () => {
-		switch (artifact.type) {
-			case "pr":
-				return artifact.title || "PR";
-			case "preview":
-				return "Preview";
-			default:
-				return artifact.title || "Link";
-		}
-	};
-
-	return (
-		<Button variant="outline" size="sm" className="h-7 gap-1 text-xs" asChild>
-			<a href={artifact.url} target="_blank" rel="noopener noreferrer">
-				{getIcon()}
-				{getLabel()}
-			</a>
-		</Button>
-	);
-}
-
-function ParticipantAvatars({
-	participants,
-}: {
-	participants: ParticipantPresence[];
-}) {
-	const onlineParticipants = participants.filter((p) => p.isOnline);
-	const offlineParticipants = participants.filter((p) => !p.isOnline);
-
-	// Show up to 3 online avatars, then +N
-	const visibleOnline = onlineParticipants.slice(0, 3);
-	const remainingCount =
-		onlineParticipants.length - 3 + offlineParticipants.length;
-
-	if (participants.length === 0) return null;
-
-	return (
-		<div className="flex items-center -space-x-2">
-			{visibleOnline.map((p) => (
-				<div key={p.id} className="relative" title={`${p.userName} (online)`}>
-					{p.avatarUrl ? (
-						<img
-							src={p.avatarUrl}
-							alt={p.userName}
-							className="size-7 rounded-full border-2 border-background"
-						/>
-					) : (
-						<div className="size-7 rounded-full border-2 border-background bg-muted flex items-center justify-center text-xs font-medium">
-							{p.userName.charAt(0).toUpperCase()}
-						</div>
-					)}
-					<span className="absolute bottom-0 right-0 size-2 rounded-full bg-green-500 border border-background" />
-				</div>
-			))}
-			{remainingCount > 0 && (
-				<div
-					className="size-7 rounded-full border-2 border-background bg-muted flex items-center justify-center text-xs font-medium"
-					title={`${remainingCount} more participant${remainingCount > 1 ? "s" : ""}`}
-				>
-					+{remainingCount}
-				</div>
-			)}
-		</div>
-	);
-}
-
-function FilesChangedDropdown({ files }: { files: FileChange[] }) {
-	const getFileIcon = (type: FileChange["type"]) => {
-		switch (type) {
-			case "added":
-				return <span className="text-green-500">+</span>;
-			case "modified":
-				return <span className="text-amber-500">~</span>;
-			case "deleted":
-				return <span className="text-red-500">-</span>;
-			default:
-				return <LuFile className="size-3" />;
-		}
-	};
-
-	const getFileName = (path: string) => {
-		const parts = path.split("/");
-		return parts[parts.length - 1];
-	};
-
-	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger asChild>
-				<Button variant="outline" size="sm" className="h-7 gap-1 text-xs">
-					<LuFile className="size-3" />
-					{files.length} file{files.length !== 1 ? "s" : ""} changed
-				</Button>
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="max-h-64 overflow-auto w-64">
-				{files.slice(0, 20).map((file) => (
-					<DropdownMenuItem
-						key={file.path}
-						className="flex items-center gap-2 font-mono text-xs"
-						title={file.path}
-					>
-						{getFileIcon(file.type)}
-						<span className="truncate">{getFileName(file.path)}</span>
-					</DropdownMenuItem>
-				))}
-				{files.length > 20 && (
-					<div className="px-2 py-1 text-xs text-muted-foreground">
-						+{files.length - 20} more files
-					</div>
-				)}
-			</DropdownMenuContent>
-		</DropdownMenu>
+				</MessageResponse>
+			</MessageContent>
+		</Message>
 	);
 }

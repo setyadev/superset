@@ -55,6 +55,8 @@ export class SessionDO extends DurableObject<Env> {
 	> = new Map();
 	private initialized = false;
 	private isSpawningSandbox = false;
+	// Accumulate assistant response content for each message
+	private messageResponses: Map<string, string> = new Map();
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
@@ -1032,11 +1034,11 @@ export class SessionDO extends DurableObject<Env> {
 			});
 		}
 
-		// Send last 500 events (excluding heartbeats)
+		// Send last 500 events (excluding heartbeats and tokens - tokens are now captured in assistant messages)
 		const events = this.sql
 			.exec(
 				`SELECT id, message_id, type, data, created_at
-				 FROM events WHERE session_id = ? AND type != 'heartbeat'
+				 FROM events WHERE session_id = ? AND type NOT IN ('heartbeat', 'token')
 				 ORDER BY created_at ASC LIMIT 500`,
 				sessionId,
 			)
@@ -1572,6 +1574,28 @@ export class SessionDO extends DurableObject<Env> {
 					}
 				}
 
+				// Accumulate token content for assistant message storage
+				if (data.event.type === "token" && data.event.messageId) {
+					const tokenData = data.event.data as {
+						content?: string;
+						token?: string;
+					};
+					// OpenCode sends cumulative text in `content` - replace
+					// CLI/chunked sends individual tokens in `token` - append
+					if (tokenData.content) {
+						// Cumulative: replace entirely
+						this.messageResponses.set(data.event.messageId, tokenData.content);
+					} else if (tokenData.token) {
+						// Chunked: append to existing
+						const existing =
+							this.messageResponses.get(data.event.messageId) || "";
+						this.messageResponses.set(
+							data.event.messageId,
+							existing + tokenData.token,
+						);
+					}
+				}
+
 				// Detect artifacts from tool events
 				this.detectArtifactsFromEvent(session.id, data.event);
 
@@ -1595,7 +1619,7 @@ export class SessionDO extends DurableObject<Env> {
 			}
 
 			case "execution_complete": {
-				// Update message status
+				// Update user message status
 				this.sql.exec(
 					"UPDATE messages SET status = ?, completed_at = ? WHERE id = ?",
 					data.success ? "completed" : "failed",
@@ -1603,15 +1627,42 @@ export class SessionDO extends DurableObject<Env> {
 					data.messageId,
 				);
 
-				// Update sandbox status
+				// Get session and create assistant message with accumulated response
 				const rows = this.sql.exec("SELECT * FROM session LIMIT 1").toArray();
 				if (rows.length > 0) {
 					const session = rows[0] as unknown as SessionRow;
+
+					// Store assistant response as a message if we have accumulated content
+					const responseContent = this.messageResponses.get(data.messageId);
+					if (responseContent) {
+						const assistantMessageId = generateId();
+						this.sql.exec(
+							`INSERT INTO messages (id, session_id, participant_id, content, role, status, completed_at)
+							 VALUES (?, ?, NULL, ?, 'assistant', 'completed', ?)`,
+							assistantMessageId,
+							session.id,
+							responseContent,
+							Date.now(),
+						);
+						// Clear accumulated content
+						this.messageResponses.delete(data.messageId);
+						console.log(
+							"[SessionDO] Stored assistant message:",
+							assistantMessageId,
+							"length:",
+							responseContent.length,
+						);
+					}
+
+					// Update sandbox status
 					this.sql.exec(
 						"UPDATE session SET sandbox_status = 'ready', updated_at = ? WHERE id = ?",
 						Date.now(),
 						session.id,
 					);
+
+					// Note: Don't broadcast execution_complete here - the sandbox already sends it
+					// via the "event" case which broadcasts to clients
 
 					// Broadcast state update
 					const state = this.getSessionState();
