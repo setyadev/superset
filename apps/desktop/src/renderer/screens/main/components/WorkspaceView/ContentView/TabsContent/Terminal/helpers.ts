@@ -484,6 +484,11 @@ export function setupKeyboardHandler(
 	xterm: XTerm,
 	options: KeyboardHandlerOptions = {},
 ): () => void {
+	const platform =
+		typeof navigator !== "undefined" ? navigator.platform.toLowerCase() : "";
+	const isMac = platform.includes("mac");
+	const isWindows = platform.includes("win");
+
 	const handler = (event: KeyboardEvent): boolean => {
 		const isShiftEnter =
 			event.key === "Enter" &&
@@ -494,6 +499,7 @@ export function setupKeyboardHandler(
 
 		if (isShiftEnter) {
 			if (event.type === "keydown" && options.onShiftEnter) {
+				event.preventDefault();
 				options.onShiftEnter();
 			}
 			return false;
@@ -508,6 +514,7 @@ export function setupKeyboardHandler(
 
 		if (isCmdBackspace) {
 			if (event.type === "keydown" && options.onWrite) {
+				event.preventDefault();
 				options.onWrite("\x15\x1b[D"); // Ctrl+U + left arrow
 			}
 			return false;
@@ -523,6 +530,7 @@ export function setupKeyboardHandler(
 
 		if (isCmdLeft) {
 			if (event.type === "keydown" && options.onWrite) {
+				event.preventDefault();
 				options.onWrite("\x01"); // Ctrl+A - beginning of line
 			}
 			return false;
@@ -538,7 +546,71 @@ export function setupKeyboardHandler(
 
 		if (isCmdRight) {
 			if (event.type === "keydown" && options.onWrite) {
+				event.preventDefault();
 				options.onWrite("\x05"); // Ctrl+E - end of line
+			}
+			return false;
+		}
+
+		// Option+Left/Right (macOS): word navigation (Meta+B / Meta+F)
+		const isOptionLeft =
+			event.key === "ArrowLeft" &&
+			event.altKey &&
+			isMac &&
+			!event.metaKey &&
+			!event.ctrlKey &&
+			!event.shiftKey;
+
+		if (isOptionLeft) {
+			if (event.type === "keydown" && options.onWrite) {
+				options.onWrite("\x1bb"); // Meta+B - backward word
+			}
+			return false;
+		}
+
+		// Option+Right: Move cursor forward by word (Meta+F)
+		const isOptionRight =
+			event.key === "ArrowRight" &&
+			event.altKey &&
+			isMac &&
+			!event.metaKey &&
+			!event.ctrlKey &&
+			!event.shiftKey;
+
+		if (isOptionRight) {
+			if (event.type === "keydown" && options.onWrite) {
+				options.onWrite("\x1bf"); // Meta+F - forward word
+			}
+			return false;
+		}
+
+		// Ctrl+Left/Right (Windows): word navigation (Meta+B / Meta+F)
+		const isCtrlLeft =
+			event.key === "ArrowLeft" &&
+			event.ctrlKey &&
+			isWindows &&
+			!event.metaKey &&
+			!event.altKey &&
+			!event.shiftKey;
+
+		if (isCtrlLeft) {
+			if (event.type === "keydown" && options.onWrite) {
+				options.onWrite("\x1bb"); // Meta+B - backward word
+			}
+			return false;
+		}
+
+		const isCtrlRight =
+			event.key === "ArrowRight" &&
+			event.ctrlKey &&
+			isWindows &&
+			!event.metaKey &&
+			!event.altKey &&
+			!event.shiftKey;
+
+		if (isCtrlRight) {
+			if (event.type === "keydown" && options.onWrite) {
+				options.onWrite("\x1bf"); // Meta+F - forward word
 			}
 			return false;
 		}

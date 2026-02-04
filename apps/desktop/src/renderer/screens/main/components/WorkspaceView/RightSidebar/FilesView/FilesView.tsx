@@ -279,7 +279,7 @@ export function FilesView() {
 	}
 
 	return (
-		<div className="flex flex-col h-full">
+		<div className="flex flex-col flex-1 min-h-0">
 			<FileTreeToolbar
 				searchTerm={searchTerm}
 				onSearchChange={setSearchTerm}
@@ -291,76 +291,34 @@ export function FilesView() {
 				onToggleHiddenFiles={handleToggleHiddenFiles}
 			/>
 
-			<ContextMenu>
-				<ContextMenuTrigger asChild className="flex-1 min-h-0">
-					<div className="flex-1 min-h-0 overflow-auto">
-						{newItemMode && newItemParentPath === worktreePath && (
-							<NewItemInput
-								mode={newItemMode}
-								parentPath={newItemParentPath}
-								onSubmit={handleNewItemSubmit}
-								onCancel={handleNewItemCancel}
-							/>
-						)}
+			<div className="flex-1 min-h-0 overflow-hidden">
+				<ContextMenu>
+					<ContextMenuTrigger asChild className="h-full">
+						<div className="h-full overflow-auto">
+							{newItemMode && newItemParentPath === worktreePath && (
+								<NewItemInput
+									mode={newItemMode}
+									parentPath={newItemParentPath}
+									onSubmit={handleNewItemSubmit}
+									onCancel={handleNewItemCancel}
+								/>
+							)}
 
-						{isSearching ? (
-							searchResultEntries.length > 0 ? (
-								<div className="flex flex-col">
-									{searchResultEntries.map((entry) =>
-										renameEntry?.path === entry.path ? (
-											<RenameInput
-												key={entry.id}
-												entry={entry}
-												onSubmit={handleRenameSubmit}
-												onCancel={handleRenameCancel}
-											/>
-										) : (
-											<FileSearchResultItem
-												key={entry.id}
-												entry={entry}
-												worktreePath={worktreePath}
-												onActivate={handleFileActivate}
-												onOpenInEditor={handleOpenInEditor}
-												onNewFile={handleNewFile}
-												onNewFolder={handleNewFolder}
-												onRename={handleRename}
-												onDelete={handleDeleteRequest}
-											/>
-										),
-									)}
-								</div>
-							) : (
-								<div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
-									{isSearchFetching
-										? "Searching files..."
-										: "No matching files"}
-								</div>
-							)
-						) : (
-							<div {...tree.getContainerProps()} className="outline-none">
-								{tree.getItems().map((item) => {
-									const data = item.getItemData();
-									if (!data || item.getId() === "root") return null;
-									const showNewItemInput =
-										newItemMode &&
-										data.isDirectory &&
-										data.path === newItemParentPath;
-									const isRenaming = renameEntry?.path === data.path;
-									return (
-										<div key={item.getId()}>
-											{isRenaming ? (
+							{isSearching ? (
+								searchResultEntries.length > 0 ? (
+									<div className="flex flex-col">
+										{searchResultEntries.map((entry) =>
+											renameEntry?.path === entry.path ? (
 												<RenameInput
-													entry={data}
+													key={entry.id}
+													entry={entry}
 													onSubmit={handleRenameSubmit}
 													onCancel={handleRenameCancel}
-													level={item.getItemMeta().level}
 												/>
 											) : (
-												<FileTreeItem
-													item={item}
-													entry={data}
-													rowHeight={ROW_HEIGHT}
-													indent={TREE_INDENT}
+												<FileSearchResultItem
+													key={entry.id}
+													entry={entry}
 													worktreePath={worktreePath}
 													onActivate={handleFileActivate}
 													onOpenInEditor={handleOpenInEditor}
@@ -369,34 +327,78 @@ export function FilesView() {
 													onRename={handleRename}
 													onDelete={handleDeleteRequest}
 												/>
-											)}
-											{showNewItemInput && (
-												<NewItemInput
-													mode={newItemMode}
-													parentPath={newItemParentPath}
-													onSubmit={handleNewItemSubmit}
-													onCancel={handleNewItemCancel}
-													level={item.getItemMeta().level + 1}
-												/>
-											)}
-										</div>
-									);
-								})}
-							</div>
-						)}
-					</div>
-				</ContextMenuTrigger>
-				<ContextMenuContent className="w-48">
-					<ContextMenuItem onClick={() => handleNewFile(worktreePath)}>
-						<LuFile className="mr-2 size-4" />
-						New File
-					</ContextMenuItem>
-					<ContextMenuItem onClick={() => handleNewFolder(worktreePath)}>
-						<LuFolder className="mr-2 size-4" />
-						New Folder
-					</ContextMenuItem>
-				</ContextMenuContent>
-			</ContextMenu>
+											),
+										)}
+									</div>
+								) : (
+									<div className="flex-1 flex items-center justify-center text-muted-foreground text-sm p-4">
+										{isSearchFetching
+											? "Searching files..."
+											: "No matching files"}
+									</div>
+								)
+							) : (
+								<div {...tree.getContainerProps()} className="outline-none">
+									{tree.getItems().map((item) => {
+										const data = item.getItemData();
+										if (!data || item.getId() === "root") return null;
+										const showNewItemInput =
+											newItemMode &&
+											data.isDirectory &&
+											data.path === newItemParentPath;
+										const isRenaming = renameEntry?.path === data.path;
+										return (
+											<div key={item.getId()}>
+												{isRenaming ? (
+													<RenameInput
+														entry={data}
+														onSubmit={handleRenameSubmit}
+														onCancel={handleRenameCancel}
+														level={item.getItemMeta().level}
+													/>
+												) : (
+													<FileTreeItem
+														item={item}
+														entry={data}
+														rowHeight={ROW_HEIGHT}
+														indent={TREE_INDENT}
+														worktreePath={worktreePath}
+														onActivate={handleFileActivate}
+														onOpenInEditor={handleOpenInEditor}
+														onNewFile={handleNewFile}
+														onNewFolder={handleNewFolder}
+														onRename={handleRename}
+														onDelete={handleDeleteRequest}
+													/>
+												)}
+												{showNewItemInput && (
+													<NewItemInput
+														mode={newItemMode}
+														parentPath={newItemParentPath}
+														onSubmit={handleNewItemSubmit}
+														onCancel={handleNewItemCancel}
+														level={item.getItemMeta().level + 1}
+													/>
+												)}
+											</div>
+										);
+									})}
+								</div>
+							)}
+						</div>
+					</ContextMenuTrigger>
+					<ContextMenuContent className="w-48">
+						<ContextMenuItem onClick={() => handleNewFile(worktreePath)}>
+							<LuFile className="mr-2 size-4" />
+							New File
+						</ContextMenuItem>
+						<ContextMenuItem onClick={() => handleNewFolder(worktreePath)}>
+							<LuFolder className="mr-2 size-4" />
+							New Folder
+						</ContextMenuItem>
+					</ContextMenuContent>
+				</ContextMenu>
+			</div>
 
 			<DeleteConfirmDialog
 				entry={deleteEntry}
