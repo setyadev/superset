@@ -21,6 +21,22 @@ import {
 } from "./schema";
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/** UUID generator with fallback for environments without crypto.randomUUID (React Native). */
+function generateUUID(): string {
+	if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+		return generateUUID();
+	}
+	return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+		const r = (Math.random() * 16) | 0;
+		const v = c === "x" ? r : (r & 0x3) | 0x8;
+		return v.toString(16);
+	});
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -36,6 +52,7 @@ export interface DurableChatClientOptions {
 	actorId?: string;
 	user?: SessionUser | null;
 	onError?: (error: Error) => void;
+	onStatusChange?: (status: ConnectionStatus) => void;
 }
 
 /**
@@ -108,7 +125,7 @@ export class DurableChatClient {
 		this.options = options;
 		this.sessionId = options.sessionId;
 		this.actorId =
-			options.actorId ?? options.user?.userId ?? crypto.randomUUID();
+			options.actorId ?? options.user?.userId ?? generateUUID();
 
 		// Create abort controller before anything else
 		this._abortController = new AbortController();
@@ -160,6 +177,16 @@ export class DurableChatClient {
 	}
 
 	// =========================================================================
+	// Status Management
+	// =========================================================================
+
+	private _setConnectionStatus(status: ConnectionStatus): void {
+		if (this._connectionStatus === status) return;
+		this._connectionStatus = status;
+		this.options.onStatusChange?.(status);
+	}
+
+	// =========================================================================
 	// Lifecycle
 	// =========================================================================
 
@@ -176,13 +203,13 @@ export class DurableChatClient {
 		}
 
 		try {
-			this._connectionStatus = "connecting";
+			this._setConnectionStatus("connecting");
 
 			// Preload stream data
 			await this._db.preload();
 
 			this._isConnected = true;
-			this._connectionStatus = "connected";
+			this._setConnectionStatus("connected");
 
 			// Announce presence if we have a user
 			if (this.options.user) {
@@ -190,7 +217,7 @@ export class DurableChatClient {
 			}
 		} catch (error) {
 			this._error = error instanceof Error ? error : new Error(String(error));
-			this._connectionStatus = "error";
+			this._setConnectionStatus("error");
 			this.options.onError?.(this._error);
 			throw error;
 		}
@@ -208,7 +235,7 @@ export class DurableChatClient {
 		this._db.close();
 		this._abortController.abort();
 		this._isConnected = false;
-		this._connectionStatus = "disconnected";
+		this._setConnectionStatus("disconnected");
 	}
 
 	/**
@@ -240,7 +267,7 @@ export class DurableChatClient {
 			throw new Error("Cannot send message without user");
 		}
 
-		const uuid = crypto.randomUUID();
+		const uuid = generateUUID();
 
 		await this._appendToStream([
 			{

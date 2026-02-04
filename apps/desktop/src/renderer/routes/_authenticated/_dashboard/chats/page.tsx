@@ -17,16 +17,21 @@ function ChatIndexPage() {
 
 	const handleCreateChat = useCallback(async () => {
 		const session = createSession();
-		// Create stream on server
-		await createStream(env.NEXT_PUBLIC_STREAMS_URL, session.id);
-		// Navigate to the new chat
+		try {
+			await createStream(env.NEXT_PUBLIC_STREAMS_URL, session.id);
+		} catch (err) {
+			console.error("[chats] Failed to create stream:", err);
+		}
 		navigate({ to: "/chats/$chatId", params: { chatId: session.id } });
 	}, [navigate, createSession]);
 
 	const handleSelectChat = useCallback(
 		async (chatId: string) => {
-			// Ensure stream exists
-			await createStream(env.NEXT_PUBLIC_STREAMS_URL, chatId);
+			try {
+				await createStream(env.NEXT_PUBLIC_STREAMS_URL, chatId);
+			} catch (err) {
+				console.error("[chats] Failed to ensure stream exists:", err);
+			}
 			navigate({ to: "/chats/$chatId", params: { chatId } });
 		},
 		[navigate],

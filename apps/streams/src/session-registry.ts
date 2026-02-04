@@ -5,7 +5,13 @@
  * This provides a lightweight session index without full database persistence.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	renameSync,
+	writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 
 export interface SessionInfo {
@@ -59,7 +65,10 @@ export class SessionRegistry {
 				mkdirSync(dir, { recursive: true });
 			}
 			const data = JSON.stringify(Array.from(this.sessions.values()), null, 2);
-			writeFileSync(this.filePath, data, "utf-8");
+			// Write to temp file then rename for crash safety
+			const tmpPath = `${this.filePath}.tmp`;
+			writeFileSync(tmpPath, data, "utf-8");
+			renameSync(tmpPath, this.filePath);
 		} catch (error) {
 			console.error("[session-registry] Failed to persist sessions:", error);
 		}

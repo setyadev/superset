@@ -21,18 +21,28 @@ function ChatDetailPage() {
 
 	// Ensure stream exists when page loads
 	useEffect(() => {
-		createStream(env.NEXT_PUBLIC_STREAMS_URL, chatId).catch(console.error);
+		createStream(env.NEXT_PUBLIC_STREAMS_URL, chatId).catch((err) => {
+			console.error("[chats] Failed to ensure stream exists on load:", err);
+		});
 	}, [chatId]);
 
 	const handleCreateChat = useCallback(async () => {
 		const session = createSession();
-		await createStream(env.NEXT_PUBLIC_STREAMS_URL, session.id);
+		try {
+			await createStream(env.NEXT_PUBLIC_STREAMS_URL, session.id);
+		} catch (err) {
+			console.error("[chats] Failed to create stream:", err);
+		}
 		navigate({ to: "/chats/$chatId", params: { chatId: session.id } });
 	}, [navigate, createSession]);
 
 	const handleSelectChat = useCallback(
 		async (id: string) => {
-			await createStream(env.NEXT_PUBLIC_STREAMS_URL, id);
+			try {
+				await createStream(env.NEXT_PUBLIC_STREAMS_URL, id);
+			} catch (err) {
+				console.error("[chats] Failed to ensure stream exists:", err);
+			}
 			navigate({ to: "/chats/$chatId", params: { chatId: id } });
 		},
 		[navigate],

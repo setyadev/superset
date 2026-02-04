@@ -107,6 +107,7 @@ class StreamWatcher {
 	private intervalId: ReturnType<typeof setInterval> | null = null;
 	private seenMessageIds: Set<string> = new Set();
 	private isPolling = false;
+	private isStopped = false;
 	private onNewUserMessage: (messageId: string, content: string) => void;
 	private sessionId = "";
 
@@ -122,6 +123,7 @@ class StreamWatcher {
 	async start(sessionId: string): Promise<void> {
 		this.sessionId = sessionId;
 		this.seenMessageIds.clear();
+		this.isStopped = false;
 
 		// Seed with existing messages before polling
 		await this.seedExistingMessages();
@@ -167,7 +169,7 @@ class StreamWatcher {
 	}
 
 	private async poll(): Promise<void> {
-		// Prevent overlapping polls if a previous one hasn't finished
+		if (this.isStopped) return;
 		if (this.isPolling) return;
 		this.isPolling = true;
 
@@ -196,7 +198,7 @@ class StreamWatcher {
 				this.seenMessageIds.add(key);
 
 				const content = value.content as string | undefined;
-				if (content) {
+				if (content && !this.isStopped) {
 					console.log(`[stream-watcher] New user message: ${key}`);
 					this.onNewUserMessage(key, content);
 				}
@@ -209,6 +211,7 @@ class StreamWatcher {
 	}
 
 	stop(): void {
+		this.isStopped = true;
 		if (this.intervalId) {
 			clearInterval(this.intervalId);
 			this.intervalId = null;

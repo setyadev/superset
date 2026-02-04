@@ -8,6 +8,7 @@ primary_region = "iad"
 [env]
   PORT = "8080"
   NODE_ENV = "production"
+  DATA_DIR = "/data"
 
 [http_service]
   internal_port = 8080
@@ -23,6 +24,10 @@ primary_region = "iad"
   grace_period = "5s"
   method = "GET"
   path = "/health"
+
+[mounts]
+  source = "stream_data"
+  destination = "/data"
 
 [[vm]]
   memory = "256mb"

@@ -1,3 +1,10 @@
+/**
+ * Chat Pane - workspace chat interface using AI elements
+ *
+ * Messages are materialized from the durable stream via useChatSession.
+ * This mirrors the dashboard ChatView but with improved UI using AI elements.
+ */
+
 import type { BetaContentBlock, ToolResult } from "@superset/ai-chat/stream";
 import { useChatSession } from "@superset/ai-chat/stream";
 import {
@@ -6,22 +13,20 @@ import {
 	ConversationEmptyState,
 	ConversationScrollButton,
 } from "@superset/ui/ai-elements/conversation";
+import { Loader } from "@superset/ui/ai-elements/loader";
 import {
 	Message,
 	MessageContent,
 	MessageResponse,
 } from "@superset/ui/ai-elements/message";
-import {
-	PromptInput,
-	PromptInputSubmit,
-	PromptInputTextarea,
-} from "@superset/ui/ai-elements/prompt-input";
-import { MessageCircle, Sparkles } from "lucide-react";
+import { Button } from "@superset/ui/button";
+import { CornerDownLeft, MessageCircle, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MosaicBranch } from "react-mosaic-component";
 import { env } from "renderer/env.renderer";
 import { authClient } from "renderer/lib/auth-client";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { getMostRecentWorkspacePath } from "renderer/lib/workspace-utils";
 import { useTabsStore } from "renderer/stores/tabs/store";
 import type { Tab } from "renderer/stores/tabs/types";
 import { BasePaneWindow, PaneToolbarActions } from "../components";
@@ -54,58 +59,39 @@ interface ChatPaneProps {
 	onMoveToNewTab: () => void;
 }
 
-function getMostRecentWorkspacePath(
-	groups: Array<{
-		workspaces: Array<{
-			worktreePath: string;
-			lastOpenedAt: number;
-		}>;
-	}>,
-): string | null {
-	const allWorkspaces = groups.flatMap((g) => g.workspaces);
-	if (allWorkspaces.length === 0) return null;
-	const sorted = [...allWorkspaces].sort(
-		(a, b) => b.lastOpenedAt - a.lastOpenedAt,
-	);
-	return sorted[0].worktreePath || null;
-}
-
-function ChatMessageBlock({
-	messageRole,
-	content,
-	contentBlocks,
-	toolResults: _toolResults,
-	isStreaming,
-}: {
-	messageRole: "user" | "assistant";
+interface ChatMessageItem {
+	id: string;
+	role: "user" | "assistant";
 	content: string;
 	contentBlocks?: BetaContentBlock[];
 	toolResults?: Map<string, ToolResult>;
 	isStreaming?: boolean;
-}) {
-	if (messageRole === "user") {
+}
+
+function ChatMessageBlock({ msg }: { msg: ChatMessageItem }) {
+	if (msg.role === "user") {
 		return (
 			<Message from="user">
-				<MessageContent>{content}</MessageContent>
+				<MessageContent>{msg.content}</MessageContent>
 			</Message>
 		);
 	}
 
+	// Extract text from content blocks, falling back to content string
 	const textContent =
-		contentBlocks
+		msg.contentBlocks
 			?.filter(
 				(b): b is BetaContentBlock & { type: "text" } => b.type === "text",
 			)
 			.map((b) => b.text)
-			.join("\n") || content;
+			.join("\n") || msg.content;
 
 	return (
 		<Message from="assistant">
 			<MessageContent>
-				<MessageResponse>{textContent}</MessageResponse>
-				{isStreaming && (
-					<span className="inline-block h-4 w-1 animate-pulse bg-current" />
-				)}
+				<MessageResponse mode={msg.isStreaming ? "streaming" : "static"}>
+					{textContent}
+				</MessageResponse>
 			</MessageContent>
 		</Message>
 	);
@@ -133,13 +119,21 @@ export function ChatPane({
 		? { userId: session.user.id, name: session.user.name ?? "Unknown" }
 		: null;
 
-	const { messages, streamingMessage, draft, setDraft, sendMessage } =
-		useChatSession({
-			proxyUrl: env.NEXT_PUBLIC_STREAMS_URL,
-			sessionId: sessionId ?? "",
-			user,
-			autoConnect: !!user && !!sessionId,
-		});
+	// Hook up to durable stream - same as dashboard ChatView
+	const {
+		messages,
+		streamingMessage,
+		draft,
+		setDraft,
+		sendMessage,
+		connectionStatus,
+		isLoading,
+	} = useChatSession({
+		proxyUrl: env.NEXT_PUBLIC_STREAMS_URL,
+		sessionId: sessionId ?? "",
+		user,
+		autoConnect: !!user && !!sessionId,
+	});
 
 	const startSessionMutation = electronTrpc.aiChat.startSession.useMutation();
 	const { data: isSessionActive, refetch: refetchIsActive } =
@@ -199,6 +193,40 @@ export function ChatPane({
 		[sendMessage, setDraft],
 	);
 
+	const handleKeyDown = useCallback(
+		(e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+			if (e.key === "Enter" && !e.shiftKey) {
+				e.preventDefault();
+				if (draft.trim() && isSessionActive && !isSending) {
+					handleSend(draft);
+				}
+			}
+		},
+		[draft, isSessionActive, isSending, handleSend],
+	);
+
+	// Build allMessages array - same pattern as dashboard ChatView
+	const allMessages = useMemo((): ChatMessageItem[] => {
+		const result: ChatMessageItem[] = messages.map((m) => ({
+			id: m.id,
+			role: m.role as "user" | "assistant",
+			content: m.content,
+			contentBlocks: m.contentBlocks,
+			toolResults: m.toolResults,
+		}));
+		if (streamingMessage) {
+			result.push({
+				id: "streaming",
+				role: "assistant",
+				content: streamingMessage.content,
+				contentBlocks: streamingMessage.contentBlocks,
+				toolResults: streamingMessage.toolResults,
+				isStreaming: true,
+			});
+		}
+		return result;
+	}, [messages, streamingMessage]);
+
 	const renderToolbar = useCallback(
 		(handlers: {
 			splitOrientation: "horizontal" | "vertical";
@@ -242,7 +270,11 @@ export function ChatPane({
 		);
 	}
 
-	const hasMessages = messages.length > 0 || !!streamingMessage;
+	const hasMessages = allMessages.length > 0;
+	const inputDisabled = !isSessionActive || isSending;
+
+	// Show thinking when we just sent a message and no streaming response yet
+	const isThinking = isSending && !streamingMessage;
 
 	return (
 		<BasePaneWindow
@@ -257,56 +289,62 @@ export function ChatPane({
 		>
 			<div className="flex flex-col h-full">
 				<Conversation className="flex-1 min-h-0">
-					{hasMessages ? (
-						<ConversationContent>
-							{messages.map((m) => (
-								<ChatMessageBlock
-									key={m.id}
-									messageRole={m.role as "user" | "assistant"}
-									content={m.content}
-									contentBlocks={m.contentBlocks}
-									toolResults={m.toolResults}
-								/>
+					{hasMessages || isThinking ? (
+						<ConversationContent className="gap-4 px-2 max-w-2xl mx-auto">
+							{allMessages.map((msg) => (
+								<ChatMessageBlock key={msg.id} msg={msg} />
 							))}
-							{streamingMessage && (
-								<ChatMessageBlock
-									messageRole="assistant"
-									content={streamingMessage.content}
-									contentBlocks={streamingMessage.contentBlocks}
-									toolResults={streamingMessage.toolResults}
-									isStreaming
-								/>
+							{isThinking && (
+								<Message from="assistant">
+									<MessageContent>
+										<div className="flex items-center gap-2 text-muted-foreground">
+											<Loader size={14} />
+											<span className="text-sm">Thinking...</span>
+										</div>
+									</MessageContent>
+								</Message>
 							)}
 						</ConversationContent>
 					) : (
 						<ConversationEmptyState
 							icon={<Sparkles className="size-8" />}
 							title="Start a conversation"
-							description="Ask anything to get started"
+							description={
+								isLoading
+									? `Connecting... (${connectionStatus})`
+									: "Ask anything to get started"
+							}
 						/>
 					)}
 					<ConversationScrollButton />
 				</Conversation>
 
-				<div className="border-t border-border p-3">
-					<PromptInput
-						onSubmit={({ text }) => {
-							if (text.trim()) {
-								handleSend(text);
-							}
-						}}
-					>
-						<PromptInputTextarea
-							value={draft}
-							onChange={(e) => setDraft(e.currentTarget.value)}
-							placeholder="Type a message..."
-							disabled={!isSessionActive || isSending}
-							className="min-h-10"
-						/>
-						<PromptInputSubmit
-							disabled={!isSessionActive || isSending || !draft.trim()}
-						/>
-					</PromptInput>
+				<div className="px-3 pb-3 relative z-10">
+					<div className="w-full max-w-2xl mx-auto">
+						<div className="border border-input rounded-xl p-2 transition-[border-color,box-shadow] duration-150 focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]">
+							<textarea
+								value={draft}
+								onChange={(e) => setDraft(e.target.value)}
+								onKeyDown={handleKeyDown}
+								placeholder="Type a message..."
+								disabled={inputDisabled}
+								rows={1}
+								className="w-full min-h-10 max-h-48 resize-none border-0 bg-transparent p-1 text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50 field-sizing-content"
+							/>
+							<div className="flex justify-end">
+								<Button
+									type="button"
+									variant="default"
+									size="icon"
+									className="size-7 rounded-lg"
+									onClick={() => draft.trim() && handleSend(draft)}
+									disabled={inputDisabled || !draft.trim()}
+								>
+									<CornerDownLeft className="size-4" />
+								</Button>
+							</div>
+						</div>
+					</div>
 				</div>
 			</div>
 		</BasePaneWindow>

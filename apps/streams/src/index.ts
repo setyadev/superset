@@ -174,4 +174,31 @@ durableServer.start().then((durableUrl) => {
 	});
 });
 
+// Graceful shutdown
+function shutdown(signal: string) {
+	console.log(`[streams] Received ${signal}, shutting down...`);
+	server.close(() => {
+		console.log("[streams] HTTP server closed");
+		durableServer
+			.stop()
+			.then(() => {
+				console.log("[streams] Durable streams server closed");
+				process.exit(0);
+			})
+			.catch((err) => {
+				console.error("[streams] Error stopping durable server:", err);
+				process.exit(1);
+			});
+	});
+
+	// Force exit if graceful shutdown takes too long
+	setTimeout(() => {
+		console.error("[streams] Graceful shutdown timed out, forcing exit");
+		process.exit(1);
+	}, 10_000);
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
 export default server;

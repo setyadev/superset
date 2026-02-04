@@ -12,6 +12,7 @@ import { useCallback, useMemo, useState } from "react";
 import { env } from "renderer/env.renderer";
 import { authClient } from "renderer/lib/auth-client";
 import { electronTrpc } from "renderer/lib/electron-trpc";
+import { getMostRecentWorkspacePath } from "renderer/lib/workspace-utils";
 import {
 	ChatMessageList,
 	type Message,
@@ -21,26 +22,6 @@ import {
 export interface ChatViewProps {
 	sessionId: string;
 	className?: string;
-}
-
-/**
- * Get the most recently opened workspace path from grouped workspaces.
- */
-function getMostRecentWorkspacePath(
-	groups: Array<{
-		workspaces: Array<{
-			worktreePath: string;
-			lastOpenedAt: number;
-		}>;
-	}>,
-): string | null {
-	const allWorkspaces = groups.flatMap((g) => g.workspaces);
-	if (allWorkspaces.length === 0) return null;
-
-	const sorted = [...allWorkspaces].sort(
-		(a, b) => b.lastOpenedAt - a.lastOpenedAt,
-	);
-	return sorted[0].worktreePath || null;
 }
 
 export function ChatView({ sessionId, className }: ChatViewProps) {

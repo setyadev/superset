@@ -42,7 +42,7 @@ export function ChatMessageList({
 		if (autoScroll && bottomRef.current) {
 			bottomRef.current.scrollIntoView({ behavior: "smooth" });
 		}
-	}, [autoScroll]);
+	}, [autoScroll, messages]);
 
 	return (
 		<ScrollArea className={cn("flex-1", className)}>

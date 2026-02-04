@@ -107,6 +107,16 @@ export function useChatSession(
 		userOnError?.(err);
 	};
 
+	// Connection status state - ensures React re-renders on status changes
+	const [connectionStatus, setConnectionStatus] =
+		useState<ConnectionStatus>("disconnected");
+	const onStatusChangeRef = useRef<(status: ConnectionStatus) => void>(
+		() => {},
+	);
+	onStatusChangeRef.current = (status) => {
+		setConnectionStatus(status);
+	};
+
 	// Create client synchronously - always available immediately
 	const clientRef = useRef<{
 		client: DurableChatClient;
@@ -132,6 +142,7 @@ export function useChatSession(
 			client: new DurableChatClient({
 				...clientOptions,
 				onError: (err) => onErrorRef.current(err),
+				onStatusChange: (status) => onStatusChangeRef.current(status),
 			}),
 			key,
 		};
@@ -191,8 +202,6 @@ export function useChatSession(
 		return myDraft?.content ?? "";
 	}, [draftRows]);
 
-	// Connection status (we don't have sessionMeta collection, use client directly)
-	const connectionStatus = client.connectionStatus;
 	const isLoading = connectionStatus !== "connected";
 
 	// =========================================================================
