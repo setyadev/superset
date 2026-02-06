@@ -9,6 +9,8 @@ export function useCreateOrAttachWithTheme() {
 	const themeType = resolveTerminalThemeType({
 		activeThemeType: activeTheme?.type,
 	});
+	const { mutate: baseMutate, mutateAsync: baseMutateAsync, ...mutationState } =
+		mutation;
 	type CreateOrAttachInput = Parameters<typeof mutation.mutate>[0];
 
 	const withTheme = useCallback(
@@ -20,17 +22,17 @@ export function useCreateOrAttachWithTheme() {
 	);
 
 	const mutate = useCallback<typeof mutation.mutate>(
-		(input, options) => mutation.mutate(withTheme(input), options),
-		[mutation, withTheme],
+		(input, options) => baseMutate(withTheme(input), options),
+		[baseMutate, withTheme],
 	);
 
 	const mutateAsync = useCallback<typeof mutation.mutateAsync>(
-		(input, options) => mutation.mutateAsync(withTheme(input), options),
-		[mutation, withTheme],
+		(input, options) => baseMutateAsync(withTheme(input), options),
+		[baseMutateAsync, withTheme],
 	);
 
 	return {
-		...mutation,
+		...mutationState,
 		mutate,
 		mutateAsync,
 	};
