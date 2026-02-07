@@ -106,7 +106,8 @@ try {
 	const errorMessage =
 		`${sqliteError.message ?? ""} ${rootCause.message ?? ""}`.toLowerCase();
 
-	const isSqliteError = errorCode === "sqlite_error";
+	const isDrizzleError = sqliteError.constructor?.name === "DrizzleError";
+	const isSqliteError = errorCode === "sqlite_error" || isDrizzleError;
 	const isIdempotentMessage =
 		errorMessage.includes("duplicate column name") ||
 		errorMessage.includes("already exists") ||
