@@ -141,6 +141,13 @@
       "when": 1770438863796,
       "tag": "0019_add_hide_image_to_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1770681828456,
+      "tag": "0020_add_icon_url_to_projects",
+      "breakpoints": true
     }
   ]
 }
