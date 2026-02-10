@@ -7,7 +7,7 @@ import {
 	invitations,
 	members,
 	organizations,
-	repositories,
+	projects,
 	taskStatuses,
 	tasks,
 } from "@superset/db/schema";
@@ -18,7 +18,7 @@ import { QueryBuilder } from "drizzle-orm/pg-core";
 export type AllowedTable =
 	| "tasks"
 	| "task_statuses"
-	| "repositories"
+	| "projects"
 	| "auth.members"
 	| "auth.organizations"
 	| "auth.users"
@@ -57,8 +57,8 @@ export async function buildWhereClause(
 		case "task_statuses":
 			return build(taskStatuses, taskStatuses.organizationId, organizationId);
 
-		case "repositories":
-			return build(repositories, repositories.organizationId, organizationId);
+		case "projects":
+			return build(projects, projects.organizationId, organizationId);
 
 		case "auth.members":
 			return build(members, members.organizationId, organizationId);
