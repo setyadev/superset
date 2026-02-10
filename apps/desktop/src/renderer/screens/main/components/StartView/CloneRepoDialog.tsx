@@ -75,7 +75,7 @@ export function CloneRepoDialog({
 							type="text"
 							value={url}
 							onChange={(e) => setUrl(e.target.value)}
-							placeholder="https://github.com/user/repo.git"
+							placeholder="https:// or git@github.com:user/repo.git"
 							className="w-full px-3 py-2.5 bg-background border border-border rounded-md text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-ring transition-colors"
 							disabled={isLoading}
 							onKeyDown={(e) => {
