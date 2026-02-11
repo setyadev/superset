@@ -24,6 +24,7 @@ import {
 	createToolResultsCollection,
 	updateConnectionStatus,
 } from "./collections";
+import { StreamError } from "./errors";
 import { extractTextContent, messageRowToUIMessage } from "./materialize";
 import type {
 	ActorType,
@@ -131,15 +132,16 @@ export class DurableChatClient<
 	// ═══════════════════════════════════════════════════════════════════════
 
 	constructor(options: DurableChatClientOptions<TTools>) {
-		this.options = options;
+		this.options = {
+			...options,
+			proxyUrl: options.proxyUrl.replace(/\/+$/, ""),
+		};
 		this.sessionId = options.sessionId;
 		this.actorId = options.actorId ?? crypto.randomUUID();
 		this.actorType = options.actorType ?? "user";
 
-		// Create abort controller before anything else
 		this._abortController = new AbortController();
 
-		// Create stream-db synchronously (use injected sessionDB for tests)
 		this._db =
 			options.sessionDB ??
 			createSessionDB({
@@ -149,15 +151,12 @@ export class DurableChatClient<
 				signal: this._abortController.signal,
 			});
 
-		// Create all collections synchronously (always from _db.collections)
 		this._collections = this.createCollections();
 
-		// Initialize session metadata
 		this._collections.sessionMeta.insert(
 			createInitialSessionMeta(this.sessionId),
 		);
 
-		// Create optimistic actions (they use collections)
 		this._messageAction = this.createMessageAction();
 		this._addToolResultAction = this.createAddToolResultAction();
 		this._addApprovalResponseAction = this.createApprovalResponseAction();
@@ -179,17 +178,14 @@ export class DurableChatClient<
 	 * outside this pattern.
 	 */
 	private createCollections() {
-		// Get root collections from stream-db (always available - from real or mock SessionDB)
-		// Note: rawPresence contains per-device records; we expose aggregated presence
 		const { chunks, presence: rawPresence, agents } = this._db.collections;
 
-		// Root materialized collection: chunks → messages
-		// Uses inline subquery for chunk aggregation
+		// chunks → messages (inline subquery for chunk aggregation)
 		const messages = createMessagesCollection({
 			chunksCollection: chunks,
 		});
 
-		// Derived collections filter on message parts (lazy evaluation)
+		// Derived collections filter on message parts
 		const toolCalls = createToolCallsCollection({
 			messagesCollection: messages,
 		});
@@ -206,21 +202,18 @@ export class DurableChatClient<
 			messagesCollection: messages,
 		});
 
-		// Session metadata collection (local state)
 		const sessionMeta = createCollection(
 			createSessionMetaCollectionOptions({
 				sessionId: this.sessionId,
 			}),
 		);
 
-		// Session statistics collection (aggregated from chunks)
 		const sessionStats = createSessionStatsCollection({
 			sessionId: this.sessionId,
 			chunksCollection: chunks,
 		});
 
-		// Create aggregated presence collection (groups by actorId, filters for online)
-		// This provides a "who's online" view rather than raw per-device records
+		// Aggregated "who's online" view (groups rawPresence by actorId)
 		const presence = createPresenceCollection({
 			sessionId: this.sessionId,
 			rawPresenceCollection: rawPresence,
@@ -244,32 +237,18 @@ export class DurableChatClient<
 	// Core API (TanStack AI ChatClient compatible)
 	// ═══════════════════════════════════════════════════════════════════════
 
-	/**
-	 * Get all messages as UIMessage array.
-	 * Messages are accessed directly from the materialized collection.
-	 */
 	get messages(): UIMessage[] {
 		return [...this._collections.messages.values()].map(messageRowToUIMessage);
 	}
 
-	/**
-	 * Check if any generation is currently active.
-	 * Uses the activeGenerations collection size directly.
-	 */
 	get isLoading(): boolean {
 		return this._collections.activeGenerations.size > 0;
 	}
 
-	/**
-	 * Get the current error, if any.
-	 */
 	get error(): Error | undefined {
 		return this._error;
 	}
 
-	/**
-	 * Check if the client has been disposed.
-	 */
 	get isDisposed(): boolean {
 		return this._isDisposed;
 	}
@@ -326,9 +305,6 @@ export class DurableChatClient<
 		});
 	}
 
-	/**
-	 * Execute an optimistic action with unified error handling.
-	 */
 	private async executeAction<T>(
 		action: (input: T) => Transaction,
 		input: T,
@@ -343,15 +319,13 @@ export class DurableChatClient<
 		}
 	}
 
-	/**
-	 * POST JSON to proxy endpoint with error handling.
-	 */
 	private async postToProxy(
 		path: string,
 		body: Record<string, unknown>,
 		options?: { actorIdHeader?: boolean },
 	): Promise<void> {
 		const headers: Record<string, string> = {
+			...this.options.stream?.headers,
 			"Content-Type": "application/json",
 		};
 		if (options?.actorIdHeader) {
@@ -365,8 +339,7 @@ export class DurableChatClient<
 		});
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(`Request failed: ${response.status} ${errorText}`);
+			throw StreamError.fromResponse(response);
 		}
 	}
 
@@ -383,8 +356,6 @@ export class DurableChatClient<
 			onMutate: ({ content, messageId, role }) => {
 				const createdAt = new Date();
 
-				// Insert into messages collection directly
-				// This propagates to all derived collections
 				this._collections.messages.insert({
 					id: messageId,
 					role,
@@ -413,70 +384,13 @@ export class DurableChatClient<
 		});
 	}
 
-	/**
-	 * Reload the last user message and regenerate response.
-	 */
-	async reload(): Promise<void> {
-		const msgs = this.messages;
-		if (msgs.length === 0) return;
-
-		// Find the last user message
-		let lastUserMessage: UIMessage | undefined;
-		for (let i = msgs.length - 1; i >= 0; i--) {
-			if (msgs[i]?.role === "user") {
-				lastUserMessage = msgs[i];
-				break;
-			}
-		}
-
-		if (!lastUserMessage) return;
-
-		// Get content of last user message
-		const content = extractTextContent(
-			lastUserMessage as unknown as MessageRow,
-		);
-
-		// Call regenerate endpoint
-		const response = await fetch(
-			`${this.options.proxyUrl}/v1/sessions/${this.sessionId}/regenerate`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					fromMessageId: lastUserMessage.id,
-					content,
-					actorId: this.actorId,
-					actorType: this.actorType,
-				}),
-			},
-		);
-
-		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(`Failed to reload: ${response.status} ${errorText}`);
-		}
-	}
-
-	/**
-	 * Stop all active generations.
-	 */
-	stop(): void {
-		// Call stop endpoint
-		fetch(`${this.options.proxyUrl}/v1/sessions/${this.sessionId}/stop`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ messageId: null }), // null = stop all
-		}).catch((err) => {
-			console.warn("Failed to stop generation:", err);
+	async stop(): Promise<void> {
+		await this.postToProxy(`/v1/sessions/${this.sessionId}/stop`, {
+			messageId: null,
 		});
 	}
 
-	/**
-	 * Clear all messages (local only - does not affect server).
-	 */
 	clear(): void {
-		// Note: This only clears local state, not the durable stream
-		// For full clear, use the proxy's clear endpoint
 		this.options.onMessagesChange?.([]);
 	}
 
@@ -492,7 +406,6 @@ export class DurableChatClient<
 			throw new Error("Client not connected. Call connect() first.");
 		}
 
-		// Ensure messageId is set for optimistic updates
 		const inputWithMessageId: ClientToolResultInput = {
 			...result,
 			messageId: result.messageId ?? crypto.randomUUID(),
@@ -500,18 +413,11 @@ export class DurableChatClient<
 		await this.executeAction(this._addToolResultAction, inputWithMessageId);
 	}
 
-	/**
-	 * Create the optimistic action for adding tool results.
-	 *
-	 * Inserts a new message with a ToolResultPart into the messages collection.
-	 * Uses client-generated messageId for predictable IDs.
-	 */
 	private createAddToolResultAction() {
 		return createOptimisticAction<ClientToolResultInput>({
 			onMutate: ({ messageId, toolCallId, output, error }) => {
 				const createdAt = new Date();
 
-				// Insert a new message with tool-result part
 				this._collections.messages.insert({
 					id: messageId,
 					role: "assistant",
@@ -571,11 +477,9 @@ export class DurableChatClient<
 	private createApprovalResponseAction() {
 		return createOptimisticAction<ApprovalResponseInput>({
 			onMutate: ({ id, approved }) => {
-				// Find the message containing this approval
 				for (const message of this._collections.messages.values()) {
 					for (const part of message.parts) {
 						if (part.type === "tool-call" && part.approval?.id === id) {
-							// Update the message with the approval response
 							this._collections.messages.update(message.id, (draft) => {
 								for (const p of draft.parts) {
 									const toolCall = p as ToolCallPart;
@@ -650,11 +554,6 @@ export class DurableChatClient<
 	// Collections
 	// ═══════════════════════════════════════════════════════════════════════
 
-	/**
-	 * Get all collections for custom queries.
-	 * All collections contain fully materialized objects.
-	 * Collections are available immediately after construction.
-	 */
 	get collections() {
 		return this._collections;
 	}
@@ -663,9 +562,6 @@ export class DurableChatClient<
 	// Durable-specific features
 	// ═══════════════════════════════════════════════════════════════════════
 
-	/**
-	 * Get current connection status.
-	 */
 	get connectionStatus(): ConnectionStatus {
 		const meta = this._collections.sessionMeta.get(this.sessionId);
 		return meta?.connectionStatus ?? "disconnected";
@@ -691,10 +587,7 @@ export class DurableChatClient<
 		);
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(
-				`Failed to fork session: ${response.status} ${errorText}`,
-			);
+			throw StreamError.fromResponse(response);
 		}
 
 		return (await response.json()) as ForkResult;
@@ -716,10 +609,7 @@ export class DurableChatClient<
 		);
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(
-				`Failed to register agents: ${response.status} ${errorText}`,
-			);
+			throw StreamError.fromResponse(response);
 		}
 	}
 
@@ -737,10 +627,7 @@ export class DurableChatClient<
 		);
 
 		if (!response.ok) {
-			const errorText = await response.text();
-			throw new Error(
-				`Failed to unregister agent: ${response.status} ${errorText}`,
-			);
+			throw StreamError.fromResponse(response);
 		}
 	}
 
@@ -758,15 +645,11 @@ export class DurableChatClient<
 		if (this._isConnected) return;
 
 		try {
-			// Update connection status
 			this.updateSessionMeta((meta) =>
 				updateConnectionStatus(meta, "connecting"),
 			);
 
-			// Skip server call when using injected sessionDB (test mode)
-			// This allows tests to use connect() without needing a real server
 			if (!this.options.sessionDB) {
-				// Create or get the session on the server
 				const response = await fetch(
 					`${this.options.proxyUrl}/v1/sessions/${this.sessionId}`,
 					{
@@ -776,21 +659,15 @@ export class DurableChatClient<
 					},
 				);
 
-				if (
-					!response.ok &&
-					response.status !== 200 &&
-					response.status !== 201
-				) {
-					throw new Error(`Failed to create session: ${response.status}`);
+				if (!response.ok) {
+					throw StreamError.fromResponse(response);
 				}
 			}
 
-			// Preload stream data (works for both real and mock sessionDB)
 			await this._db.preload();
 
 			this._isConnected = true;
 
-			// Update connection status
 			this.updateSessionMeta((meta) =>
 				updateConnectionStatus(meta, "connected"),
 			);
@@ -807,30 +684,19 @@ export class DurableChatClient<
 		}
 	}
 
-	/**
-	 * Pause stream sync.
-	 */
 	pause(): void {
-		// The stream-db handles pausing internally via the abort signal
+		// No-op: stream-db handles pausing internally via the abort signal
 	}
 
-	/**
-	 * Resume stream sync.
-	 */
 	async resume(): Promise<void> {
 		if (!this._isConnected) {
 			await this.connect();
 			return;
 		}
-
-		// The stream-db handles resuming internally
+		// No-op: stream-db handles resuming internally
 	}
 
-	/**
-	 * Disconnect from the stream.
-	 */
 	disconnect(): void {
-		// Close stream-db (which aborts the stream)
 		this._db.close();
 
 		this._abortController.abort();
@@ -861,9 +727,6 @@ export class DurableChatClient<
 	// Private Helpers
 	// ═══════════════════════════════════════════════════════════════════════
 
-	/**
-	 * Update session metadata.
-	 */
 	private updateSessionMeta(
 		updater: (meta: SessionMetaRow) => SessionMetaRow,
 	): void {
@@ -881,12 +744,6 @@ export class DurableChatClient<
 // Factory Function
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Create a new DurableChatClient instance.
- *
- * @param options - Client options
- * @returns New client instance
- */
 export function createDurableChatClient<
 	TTools extends ReadonlyArray<AnyClientTool> = AnyClientTool[],
 >(options: DurableChatClientOptions<TTools>): DurableChatClient<TTools> {
