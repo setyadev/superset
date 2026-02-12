@@ -45,18 +45,16 @@ export const TOKEN_CONFIG = {
 	REFRESH_THRESHOLD: 5 * 60,
 } as const;
 
-// PostHog
-export const POSTHOG_COOKIE_NAME = "superset";
-
+// Feature flags - all enabled by default
 export const FEATURE_FLAGS = {
 	/** Gates access to experimental Electric SQL tasks feature. */
-	ELECTRIC_TASKS_ACCESS: "electric-tasks-access",
+	ELECTRIC_TASKS_ACCESS: true,
 	/** Gates access to billing features. */
-	BILLING_ENABLED: "billing-enabled",
-	/** Gates access to GitHub integration (currently buggy, internal only). */
-	GITHUB_INTEGRATION_ACCESS: "github-integration-access",
-	/** Gates access to AI chat (@superset.sh internal only). */
-	AI_CHAT: "ai-chat",
-	/** Gates access to Slack integration (internal only). */
-	SLACK_INTEGRATION_ACCESS: "slack-integration-access",
+	BILLING_ENABLED: true,
+	/** Gates access to GitHub integration. */
+	GITHUB_INTEGRATION_ACCESS: true,
+	/** Gates access to AI chat. */
+	AI_CHAT: true,
+	/** Gates access to Slack integration. */
+	SLACK_INTEGRATION_ACCESS: true,
 } as const;

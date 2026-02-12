@@ -2,10 +2,10 @@ import { db } from "@superset/db/client";
 import { integrationConnections } from "@superset/db/schema";
 import { and, eq } from "drizzle-orm";
 
-export async function getSlackConnection(organizationId: string) {
+export async function getSlackConnection(userId: string) {
 	const connection = await db.query.integrationConnections.findFirst({
 		where: and(
-			eq(integrationConnections.organizationId, organizationId),
+			eq(integrationConnections.userId, userId),
 			eq(integrationConnections.provider, "slack"),
 		),
 	});

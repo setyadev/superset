@@ -4,67 +4,58 @@ import type { TRPCRouterRecord } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { protectedProcedure } from "../../../trpc";
-import { verifyOrgAdmin, verifyOrgMembership } from "../utils";
 import { getLinearClient } from "./utils";
 
 export const linearRouter = {
-	getConnection: protectedProcedure
-		.input(z.object({ organizationId: z.uuid() }))
-		.query(async ({ ctx, input }) => {
-			await verifyOrgMembership(ctx.session.user.id, input.organizationId);
-			const connection = await db.query.integrationConnections.findFirst({
-				where: and(
-					eq(integrationConnections.organizationId, input.organizationId),
+	getConnection: protectedProcedure.query(async ({ ctx }) => {
+		const userId = ctx.session.user.id;
+		const connection = await db.query.integrationConnections.findFirst({
+			where: and(
+				eq(integrationConnections.userId, userId),
+				eq(integrationConnections.provider, "linear"),
+			),
+			columns: { id: true, config: true },
+		});
+		if (!connection) return null;
+		return { config: connection.config as LinearConfig | null };
+	}),
+
+	disconnect: protectedProcedure.mutation(async ({ ctx }) => {
+		const userId = ctx.session.user.id;
+
+		const result = await db
+			.delete(integrationConnections)
+			.where(
+				and(
+					eq(integrationConnections.userId, userId),
 					eq(integrationConnections.provider, "linear"),
 				),
-				columns: { id: true, config: true },
-			});
-			if (!connection) return null;
-			return { config: connection.config as LinearConfig | null };
-		}),
+			)
+			.returning({ id: integrationConnections.id });
 
-	disconnect: protectedProcedure
-		.input(z.object({ organizationId: z.uuid() }))
-		.mutation(async ({ ctx, input }) => {
-			await verifyOrgAdmin(ctx.session.user.id, input.organizationId);
+		if (result.length === 0) {
+			return { success: false, error: "No connection found" };
+		}
 
-			const result = await db
-				.delete(integrationConnections)
-				.where(
-					and(
-						eq(integrationConnections.organizationId, input.organizationId),
-						eq(integrationConnections.provider, "linear"),
-					),
-				)
-				.returning({ id: integrationConnections.id });
+		return { success: true };
+	}),
 
-			if (result.length === 0) {
-				return { success: false, error: "No connection found" };
-			}
-
-			return { success: true };
-		}),
-
-	getTeams: protectedProcedure
-		.input(z.object({ organizationId: z.uuid() }))
-		.query(async ({ ctx, input }) => {
-			await verifyOrgMembership(ctx.session.user.id, input.organizationId);
-			const client = await getLinearClient(input.organizationId);
-			if (!client) return [];
-			const teams = await client.teams();
-			return teams.nodes.map((t) => ({ id: t.id, name: t.name, key: t.key }));
-		}),
+	getTeams: protectedProcedure.query(async ({ ctx }) => {
+		const userId = ctx.session.user.id;
+		const client = await getLinearClient(userId);
+		if (!client) return [];
+		const teams = await client.teams();
+		return teams.nodes.map((t) => ({ id: t.id, name: t.name, key: t.key }));
+	}),
 
 	updateConfig: protectedProcedure
 		.input(
 			z.object({
-				organizationId: z.uuid(),
 				newTasksTeamId: z.string(),
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			await verifyOrgAdmin(ctx.session.user.id, input.organizationId);
-
+			const userId = ctx.session.user.id;
 			const config: LinearConfig = {
 				provider: "linear",
 				newTasksTeamId: input.newTasksTeamId,
@@ -75,7 +66,7 @@ export const linearRouter = {
 				.set({ config })
 				.where(
 					and(
-						eq(integrationConnections.organizationId, input.organizationId),
+						eq(integrationConnections.userId, userId),
 						eq(integrationConnections.provider, "linear"),
 					),
 				);

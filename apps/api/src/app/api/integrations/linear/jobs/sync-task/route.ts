@@ -25,12 +25,10 @@ const payloadSchema = z.object({
 	teamId: z.string().optional(),
 });
 
-async function getNewTasksTeamId(
-	organizationId: string,
-): Promise<string | null> {
+async function getNewTasksTeamId(userId: string): Promise<string | null> {
 	const connection = await db.query.integrationConnections.findFirst({
 		where: and(
-			eq(integrationConnections.organizationId, organizationId),
+			eq(integrationConnections.userId, userId),
 			eq(integrationConnections.provider, "linear"),
 		),
 	});
@@ -66,7 +64,7 @@ async function syncTaskToLinear(
 	externalUrl?: string;
 	error?: string;
 }> {
-	const client = await getLinearClient(task.organizationId);
+	const client = await getLinearClient(task.userId);
 
 	if (!client) {
 		return { success: false, error: "No Linear connection found" };
@@ -206,8 +204,7 @@ export async function POST(request: Request) {
 		return Response.json({ error: "Task not found", skipped: true });
 	}
 
-	const resolvedTeamId =
-		teamId ?? (await getNewTasksTeamId(task.organizationId));
+	const resolvedTeamId = teamId ?? (await getNewTasksTeamId(task.userId));
 	if (!resolvedTeamId) {
 		return Response.json({ error: "No team configured", skipped: true });
 	}

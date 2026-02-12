@@ -22,8 +22,7 @@ const receiver = new Receiver({
 });
 
 const payloadSchema = z.object({
-	organizationId: z.string().min(1),
-	creatorUserId: z.string().min(1),
+	userId: z.string().min(1),
 });
 
 export async function POST(request: Request) {
@@ -54,11 +53,11 @@ export async function POST(request: Request) {
 		return Response.json({ error: "Invalid payload" }, { status: 400 });
 	}
 
-	const { organizationId, creatorUserId } = parsed.data;
+	const { userId } = parsed.data;
 
 	const connection = await db.query.integrationConnections.findFirst({
 		where: and(
-			eq(integrationConnections.organizationId, organizationId),
+			eq(integrationConnections.userId, userId),
 			eq(integrationConnections.provider, "linear"),
 		),
 	});
@@ -68,22 +67,18 @@ export async function POST(request: Request) {
 	}
 
 	const client = new LinearClient({ accessToken: connection.accessToken });
-	await performInitialSync(client, organizationId, creatorUserId);
+	await performInitialSync(client, userId);
 
 	return Response.json({ success: true });
 }
 
-async function performInitialSync(
-	client: LinearClient,
-	organizationId: string,
-	creatorUserId: string,
-) {
-	await syncWorkflowStates({ client, organizationId });
+async function performInitialSync(client: LinearClient, userId: string) {
+	await syncWorkflowStates({ client, userId });
 
 	const statusByExternalId = new Map<string, string>();
 	const statuses = await db.query.taskStatuses.findMany({
 		where: and(
-			eq(taskStatuses.organizationId, organizationId),
+			eq(taskStatuses.userId, userId),
 			eq(taskStatuses.externalProvider, "linear"),
 		),
 	});
@@ -115,13 +110,7 @@ async function performInitialSync(
 	const userByEmail = new Map(matchedUsers.map((u) => [u.email, u.id]));
 
 	const taskValues = issues.map((issue) =>
-		mapIssueToTask(
-			issue,
-			organizationId,
-			creatorUserId,
-			userByEmail,
-			statusByExternalId,
-		),
+		mapIssueToTask(issue, userId, userByEmail, statusByExternalId),
 	);
 
 	const batches = chunk(taskValues, BATCH_SIZE);
@@ -131,11 +120,7 @@ async function performInitialSync(
 			.insert(tasks)
 			.values(batch)
 			.onConflictDoUpdate({
-				target: [
-					tasks.organizationId,
-					tasks.externalProvider,
-					tasks.externalId,
-				],
+				target: [tasks.userId, tasks.externalProvider, tasks.externalId],
 				set: {
 					...buildConflictUpdateColumns(tasks, [
 						"slug",

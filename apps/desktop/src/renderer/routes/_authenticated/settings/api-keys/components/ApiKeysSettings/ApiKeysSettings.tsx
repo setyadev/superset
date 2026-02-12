@@ -22,7 +22,6 @@ import {
 	TableHeader,
 	TableRow,
 } from "@superset/ui/table";
-import { useLiveQuery } from "@tanstack/react-db";
 import { useState } from "react";
 import {
 	HiArrowTopRightOnSquare,
@@ -33,19 +32,25 @@ import {
 } from "react-icons/hi2";
 import { apiTrpcClient } from "renderer/lib/api-trpc-client";
 import { authClient } from "renderer/lib/auth-client";
-import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
 	isItemVisible,
 	SETTING_ITEM_ID,
 	type SettingItemId,
 } from "../../../utils/settings-search";
 
+interface ApiKey {
+	id: string;
+	name: string | null;
+	start: string | null;
+	createdAt: Date;
+	lastRequest: Date | null;
+}
+
 interface ApiKeysSettingsProps {
 	visibleItems?: SettingItemId[] | null;
 }
 
 export function ApiKeysSettings({ visibleItems }: ApiKeysSettingsProps) {
-	const collections = useCollections();
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [showGenerateDialog, setShowGenerateDialog] = useState(false);
 	const [showNewKeyDialog, setShowNewKeyDialog] = useState(false);
@@ -53,10 +58,10 @@ export function ApiKeysSettings({ visibleItems }: ApiKeysSettingsProps) {
 	const [newKeyValue, setNewKeyValue] = useState("");
 	const [copied, setCopied] = useState(false);
 
-	const { data: apiKeys, isLoading } = useLiveQuery(
-		(q) => q.from({ apiKeys: collections.apiKeys }),
-		[collections],
-	);
+	// For solo mode, API keys are managed through auth client
+	// List functionality is disabled - keys can only be created and revoked
+	const apiKeys: ApiKey[] = [];
+	const isLoading = false;
 
 	const showApiKeysList = isItemVisible(
 		SETTING_ITEM_ID.API_KEYS_LIST,
@@ -192,7 +197,7 @@ export function ApiKeysSettings({ visibleItems }: ApiKeysSettingsProps) {
 											</TableRow>
 										</TableHeader>
 										<TableBody>
-											{apiKeys.map((key) => (
+											{(apiKeys as ApiKey[]).map((key) => (
 												<TableRow key={key.id}>
 													<TableCell>
 														<div className="flex items-center gap-2">

@@ -1,7 +1,6 @@
 import { Badge } from "@superset/ui/badge";
 import { ScrollArea } from "@superset/ui/scroll-area";
 import type { TaskWithStatus } from "../../../components/TasksView/hooks/useTasksTable";
-import { AssigneeProperty } from "./components/AssigneeProperty";
 import { PriorityProperty } from "./components/PriorityProperty";
 import { StatusProperty } from "./components/StatusProperty";
 
@@ -23,7 +22,6 @@ export function PropertiesSidebar({ task }: PropertiesSidebarProps) {
 					<div className="space-y-3">
 						<StatusProperty task={task} />
 						<PriorityProperty task={task} />
-						<AssigneeProperty task={task} />
 					</div>
 
 					{/* Labels */}

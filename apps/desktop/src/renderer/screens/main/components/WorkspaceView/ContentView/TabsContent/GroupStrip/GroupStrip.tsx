@@ -9,7 +9,6 @@ import {
 } from "@superset/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@superset/ui/tooltip";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import { useFeatureFlagEnabled } from "posthog-js/react";
 import { useCallback, useMemo, useState } from "react";
 import { BsTerminalPlus } from "react-icons/bs";
 import {
@@ -52,7 +51,7 @@ export function GroupStrip() {
 	const movePaneToNewTab = useTabsStore((s) => s.movePaneToNewTab);
 	const reorderTabs = useTabsStore((s) => s.reorderTabs);
 
-	const hasAiChat = useFeatureFlagEnabled(FEATURE_FLAGS.AI_CHAT);
+	const hasAiChat = FEATURE_FLAGS.AI_CHAT;
 	const { presets } = usePresets();
 	const isDark = useIsDarkTheme();
 	const navigate = useNavigate();

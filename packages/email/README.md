@@ -11,7 +11,7 @@ Email templates for Superset, built with [React Email](https://react.email).
    - Header logo (`logo.png`): 240x240px
    - Footer logo (`logo-full.png`): 512x83px (pixelated SUPERSET text)
    - Social icons: 48x48px (displayed at 24x24 for retina)
-2. Place in `apps/marketing/public/assets/emails/`
+2. Place in `apps/desktop/resources/emails/` (or your app's public folder)
 3. Images load from `https://superset.sh/assets/emails/` in production
 
 ### Environment Variables
@@ -21,7 +21,7 @@ The email package reads `NEXT_PUBLIC_MARKETING_URL` from the root `.env` file to
 **For local development:**
 The React Email dev server automatically loads `NEXT_PUBLIC_MARKETING_URL` from the monorepo root `.env`:
 ```bash
-NEXT_PUBLIC_MARKETING_URL=http://localhost:3002  # Marketing app port
+NEXT_PUBLIC_MARKETING_URL=http://localhost:3000  # Or your app's URL
 ```
 
 **For production:**

@@ -142,7 +142,6 @@ export const settings = sqliteTable("settings", {
 		mode: "boolean",
 	}),
 	selectedRingtoneId: text("selected_ringtone_id"),
-	activeOrganizationId: text("active_organization_id"),
 	confirmOnQuit: integer("confirm_on_quit", { mode: "boolean" }),
 	terminalLinkBehavior: text(
 		"terminal_link_behavior",
@@ -198,55 +197,6 @@ export type InsertUser = typeof users.$inferInsert;
 export type SelectUser = typeof users.$inferSelect;
 
 /**
- * Organizations table - synced from cloud
- */
-export const organizations = sqliteTable(
-	"organizations",
-	{
-		id: text("id").primaryKey(),
-		clerk_org_id: text("clerk_org_id").unique(),
-		name: text("name").notNull(),
-		slug: text("slug").notNull().unique(),
-		github_org: text("github_org"),
-		avatar_url: text("avatar_url"),
-		created_at: text("created_at").notNull(),
-		updated_at: text("updated_at").notNull(),
-	},
-	(table) => [
-		index("organizations_slug_idx").on(table.slug),
-		index("organizations_clerk_org_id_idx").on(table.clerk_org_id),
-	],
-);
-
-export type InsertOrganization = typeof organizations.$inferInsert;
-export type SelectOrganization = typeof organizations.$inferSelect;
-
-/**
- * Organization members table - synced from cloud
- */
-export const organizationMembers = sqliteTable(
-	"organization_members",
-	{
-		id: text("id").primaryKey(),
-		organization_id: text("organization_id")
-			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
-		user_id: text("user_id")
-			.notNull()
-			.references(() => users.id, { onDelete: "cascade" }),
-		role: text("role").notNull(),
-		created_at: text("created_at").notNull(),
-	},
-	(table) => [
-		index("organization_members_organization_id_idx").on(table.organization_id),
-		index("organization_members_user_id_idx").on(table.user_id),
-	],
-);
-
-export type InsertOrganizationMember = typeof organizationMembers.$inferInsert;
-export type SelectOrganizationMember = typeof organizationMembers.$inferSelect;
-
-/**
  * Tasks table - synced from cloud
  */
 export const tasks = sqliteTable(
@@ -261,9 +211,6 @@ export const tasks = sqliteTable(
 		status_type: text("status_type"),
 		status_position: integer("status_position"),
 		priority: text("priority").notNull().$type<TaskPriority>(),
-		organization_id: text("organization_id")
-			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
 		repository_id: text("repository_id"),
 		assignee_id: text("assignee_id").references(() => users.id, {
 			onDelete: "set null",
@@ -290,7 +237,6 @@ export const tasks = sqliteTable(
 	},
 	(table) => [
 		index("tasks_slug_idx").on(table.slug),
-		index("tasks_organization_id_idx").on(table.organization_id),
 		index("tasks_assignee_id_idx").on(table.assignee_id),
 		index("tasks_status_idx").on(table.status),
 		index("tasks_created_at_idx").on(table.created_at),

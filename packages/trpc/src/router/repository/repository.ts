@@ -10,9 +10,6 @@ export const repositoryRouter = {
 	all: publicProcedure.query(() => {
 		return db.query.repositories.findMany({
 			orderBy: desc(repositories.createdAt),
-			with: {
-				organization: true,
-			},
 		});
 	}),
 
@@ -20,20 +17,17 @@ export const repositoryRouter = {
 		return db.query.repositories.findFirst({
 			where: eq(repositories.id, input),
 			with: {
-				organization: true,
 				tasks: true,
 			},
 		});
 	}),
 
-	byOrganization: publicProcedure
-		.input(z.string().uuid())
-		.query(({ input }) => {
-			return db.query.repositories.findMany({
-				where: eq(repositories.organizationId, input),
-				orderBy: desc(repositories.createdAt),
-			});
-		}),
+	byUser: publicProcedure.input(z.string().uuid()).query(({ input }) => {
+		return db.query.repositories.findMany({
+			where: eq(repositories.userId, input),
+			orderBy: desc(repositories.createdAt),
+		});
+	}),
 
 	byGitHub: publicProcedure
 		.input(
@@ -48,16 +42,12 @@ export const repositoryRouter = {
 					eq(repositories.repoOwner, input.owner),
 					eq(repositories.repoName, input.name),
 				),
-				with: {
-					organization: true,
-				},
 			});
 		}),
 
 	create: protectedProcedure
 		.input(
 			z.object({
-				organizationId: z.string().uuid(),
 				name: z.string().min(1),
 				slug: z.string().min(1),
 				repoUrl: z.string().url(),
@@ -66,11 +56,14 @@ export const repositoryRouter = {
 				defaultBranch: z.string().default("main"),
 			}),
 		)
-		.mutation(async ({ input }) => {
+		.mutation(async ({ ctx, input }) => {
 			const result = await dbWs.transaction(async (tx) => {
 				const [repository] = await tx
 					.insert(repositories)
-					.values(input)
+					.values({
+						...input,
+						userId: ctx.session.user.id,
+					})
 					.returning();
 
 				const txid = await getCurrentTxid(tx);

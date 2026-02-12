@@ -1,6 +1,7 @@
 import { Spinner } from "@superset/ui/spinner";
 import { type ReactNode, useEffect, useState } from "react";
 import { authClient, setAuthToken } from "renderer/lib/auth-client";
+import { disableOfflineMode, isOfflineMode } from "shared/offline-mode";
 import { electronTrpc } from "../../lib/electron-trpc";
 
 /**
@@ -9,7 +10,8 @@ import { electronTrpc } from "../../lib/electron-trpc";
  * Flow:
  * 1. Load token from disk on mount
  * 2. If valid (not expired), set in memory and validate session in background
- * 3. Render children immediately without blocking on network
+ * 3. If offline mode is enabled, bypass auth requirements
+ * 4. Render children immediately without blocking on network
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
 	const [isHydrated, setIsHydrated] = useState(false);
@@ -27,6 +29,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	useEffect(() => {
 		if (!isSuccess || isHydrated) return;
 
+		// Check if offline mode is already enabled
+		if (isOfflineMode()) {
+			setIsHydrated(true);
+			return;
+		}
+
 		if (storedToken?.token && storedToken?.expiresAt) {
 			const isExpired = new Date(storedToken.expiresAt) < new Date();
 			if (!isExpired) {
@@ -42,14 +50,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	electronTrpc.auth.onTokenChanged.useSubscription(undefined, {
 		onData: async (data) => {
 			if (data?.token && data?.expiresAt) {
-				// New authentication - clear old session state first, then set new token
+				// New authentication - clear offline mode, then set new token
+				disableOfflineMode();
 				setAuthToken(null);
 				await authClient.signOut({ fetchOptions: { throw: false } });
 				setAuthToken(data.token);
 				setIsHydrated(true);
 				refetchSession();
 			} else if (data === null) {
-				// Sign-out
+				// Sign-out - also disable offline mode
+				disableOfflineMode();
 				setAuthToken(null);
 				refetchSession();
 			}

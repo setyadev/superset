@@ -1,7 +1,4 @@
 import { auth } from "@superset/auth/server";
-import { db } from "@superset/db/client";
-import { members } from "@superset/db/schema";
-import { and, eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import { createSignedState } from "@/lib/oauth-state";
@@ -23,15 +20,6 @@ const SLACK_SCOPES = [
 ].join(",");
 
 export async function GET(request: Request) {
-	const url = new URL(request.url);
-	const organizationId = url.searchParams.get("organizationId");
-	if (!organizationId) {
-		return Response.json(
-			{ error: "Missing organizationId parameter" },
-			{ status: 400 },
-		);
-	}
-
 	const session = await auth.api.getSession({
 		headers: request.headers,
 	});
@@ -40,25 +28,8 @@ export async function GET(request: Request) {
 		return Response.json({ error: "Unauthorized" }, { status: 401 });
 	}
 
-	const userId = session.user.id;
-
-	const membership = await db.query.members.findFirst({
-		where: and(
-			eq(members.organizationId, organizationId),
-			eq(members.userId, userId),
-		),
-	});
-
-	if (!membership) {
-		return Response.json(
-			{ error: "User is not a member of this organization" },
-			{ status: 403 },
-		);
-	}
-
 	const state = createSignedState({
-		organizationId,
-		userId,
+		userId: session.user.id,
 	});
 
 	const redirectUri = `${env.NEXT_PUBLIC_API_URL}/api/integrations/slack/callback`;

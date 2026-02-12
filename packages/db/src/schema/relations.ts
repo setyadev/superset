@@ -1,13 +1,6 @@
 import { relations } from "drizzle-orm";
 
-import {
-	accounts,
-	invitations,
-	members,
-	organizations,
-	sessions,
-	users,
-} from "./auth";
+import { accounts, sessions, users } from "./auth";
 import {
 	githubInstallations,
 	githubPullRequests,
@@ -26,14 +19,16 @@ import {
 export const usersRelations = relations(users, ({ many }) => ({
 	sessions: many(sessions),
 	accounts: many(accounts),
-	members: many(members),
-	invitations: many(invitations),
 	createdTasks: many(tasks, { relationName: "creator" }),
 	assignedTasks: many(tasks, { relationName: "assignee" }),
 	connectedIntegrations: many(integrationConnections),
 	githubInstallations: many(githubInstallations),
 	devicePresence: many(devicePresence),
 	agentCommands: many(agentCommands),
+	repositories: many(repositories),
+	subscriptions: many(subscriptions),
+	tasks: many(tasks),
+	taskStatuses: many(taskStatuses),
 }));
 
 export const sessionsRelations = relations(sessions, ({ one }) => ({
@@ -50,54 +45,19 @@ export const accountsRelations = relations(accounts, ({ one }) => ({
 	}),
 }));
 
-export const organizationsRelations = relations(organizations, ({ many }) => ({
-	members: many(members),
-	invitations: many(invitations),
-	subscriptions: many(subscriptions),
-	repositories: many(repositories),
-	tasks: many(tasks),
-	taskStatuses: many(taskStatuses),
-	integrations: many(integrationConnections),
-	githubInstallations: many(githubInstallations),
-	devicePresence: many(devicePresence),
-	agentCommands: many(agentCommands),
-}));
-
-export const membersRelations = relations(members, ({ one }) => ({
-	organization: one(organizations, {
-		fields: [members.organizationId],
-		references: [organizations.id],
-	}),
-	user: one(users, {
-		fields: [members.userId],
-		references: [users.id],
-	}),
-}));
-
-export const invitationsRelations = relations(invitations, ({ one }) => ({
-	organization: one(organizations, {
-		fields: [invitations.organizationId],
-		references: [organizations.id],
-	}),
-	inviter: one(users, {
-		fields: [invitations.inviterId],
-		references: [users.id],
-	}),
-}));
-
 export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
-	organization: one(organizations, {
-		fields: [subscriptions.referenceId],
-		references: [organizations.id],
+	user: one(users, {
+		fields: [subscriptions.userId],
+		references: [users.id],
 	}),
 }));
 
 export const repositoriesRelations = relations(
 	repositories,
 	({ one, many }) => ({
-		organization: one(organizations, {
-			fields: [repositories.organizationId],
-			references: [organizations.id],
+		user: one(users, {
+			fields: [repositories.userId],
+			references: [users.id],
 		}),
 		tasks: many(tasks),
 	}),
@@ -108,9 +68,9 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 		fields: [tasks.repositoryId],
 		references: [repositories.id],
 	}),
-	organization: one(organizations, {
-		fields: [tasks.organizationId],
-		references: [organizations.id],
+	user: one(users, {
+		fields: [tasks.userId],
+		references: [users.id],
 	}),
 	status: one(taskStatuses, {
 		fields: [tasks.statusId],
@@ -131,9 +91,9 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
 export const taskStatusesRelations = relations(
 	taskStatuses,
 	({ one, many }) => ({
-		organization: one(organizations, {
-			fields: [taskStatuses.organizationId],
-			references: [organizations.id],
+		user: one(users, {
+			fields: [taskStatuses.userId],
+			references: [users.id],
 		}),
 		tasks: many(tasks),
 	}),
@@ -142,12 +102,8 @@ export const taskStatusesRelations = relations(
 export const integrationConnectionsRelations = relations(
 	integrationConnections,
 	({ one }) => ({
-		organization: one(organizations, {
-			fields: [integrationConnections.organizationId],
-			references: [organizations.id],
-		}),
-		connectedBy: one(users, {
-			fields: [integrationConnections.connectedByUserId],
+		user: one(users, {
+			fields: [integrationConnections.userId],
 			references: [users.id],
 		}),
 	}),
@@ -157,12 +113,8 @@ export const integrationConnectionsRelations = relations(
 export const githubInstallationsRelations = relations(
 	githubInstallations,
 	({ one, many }) => ({
-		organization: one(organizations, {
-			fields: [githubInstallations.organizationId],
-			references: [organizations.id],
-		}),
-		connectedBy: one(users, {
-			fields: [githubInstallations.connectedByUserId],
+		user: one(users, {
+			fields: [githubInstallations.userId],
 			references: [users.id],
 		}),
 		repositories: many(githubRepositories),
@@ -196,20 +148,12 @@ export const devicePresenceRelations = relations(devicePresence, ({ one }) => ({
 		fields: [devicePresence.userId],
 		references: [users.id],
 	}),
-	organization: one(organizations, {
-		fields: [devicePresence.organizationId],
-		references: [organizations.id],
-	}),
 }));
 
 export const agentCommandsRelations = relations(agentCommands, ({ one }) => ({
 	user: one(users, {
 		fields: [agentCommands.userId],
 		references: [users.id],
-	}),
-	organization: one(organizations, {
-		fields: [agentCommands.organizationId],
-		references: [organizations.id],
 	}),
 	parentCommand: one(agentCommands, {
 		fields: [agentCommands.parentCommandId],

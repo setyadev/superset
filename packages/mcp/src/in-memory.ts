@@ -4,10 +4,8 @@ import type { McpContext } from "./auth";
 import { createMcpServer } from "./server";
 
 export async function createInMemoryMcpClient({
-	organizationId,
 	userId,
 }: {
-	organizationId: string;
 	userId: string;
 }): Promise<{ client: Client; cleanup: () => Promise<void> }> {
 	const server = createMcpServer();
@@ -24,7 +22,7 @@ export async function createInMemoryMcpClient({
 				clientId: "slack-agent",
 				scopes: ["mcp:full"],
 				extra: {
-					mcpContext: { userId, organizationId } satisfies McpContext,
+					mcpContext: { userId } satisfies McpContext,
 				},
 			},
 		});

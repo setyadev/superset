@@ -1,17 +1,14 @@
-import { db } from "@superset/db/client";
 import {
 	agentCommands,
 	apikeys,
 	devicePresence,
 	integrationConnections,
-	invitations,
-	members,
-	organizations,
 	repositories,
 	taskStatuses,
 	tasks,
+	users,
 } from "@superset/db/schema";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import { QueryBuilder } from "drizzle-orm/pg-core";
 
@@ -19,10 +16,7 @@ export type AllowedTable =
 	| "tasks"
 	| "task_statuses"
 	| "repositories"
-	| "auth.members"
-	| "auth.organizations"
 	| "auth.users"
-	| "auth.invitations"
 	| "auth.apikeys"
 	| "device_presence"
 	| "agent_commands"
@@ -47,65 +41,26 @@ function build(table: PgTable, column: PgColumn, id: string): WhereClause {
 
 export async function buildWhereClause(
 	tableName: string,
-	organizationId: string,
 	userId: string,
 ): Promise<WhereClause | null> {
 	switch (tableName) {
 		case "tasks":
-			return build(tasks, tasks.organizationId, organizationId);
+			return build(tasks, tasks.userId, userId);
 
 		case "task_statuses":
-			return build(taskStatuses, taskStatuses.organizationId, organizationId);
+			return build(taskStatuses, taskStatuses.userId, userId);
 
 		case "repositories":
-			return build(repositories, repositories.organizationId, organizationId);
+			return build(repositories, repositories.userId, userId);
 
-		case "auth.members":
-			return build(members, members.organizationId, organizationId);
-
-		case "auth.invitations":
-			return build(invitations, invitations.organizationId, organizationId);
-
-		case "auth.organizations": {
-			// Use the authenticated user's ID to find their organizations
-			const userMemberships = await db.query.members.findMany({
-				where: eq(members.userId, userId),
-				columns: { organizationId: true },
-			});
-
-			if (userMemberships.length === 0) {
-				return { fragment: "1 = 0", params: [] };
-			}
-
-			const orgIds = [...new Set(userMemberships.map((m) => m.organizationId))];
-			const whereExpr = inArray(
-				sql`${sql.identifier(organizations.id.name)}`,
-				orgIds,
-			);
-			const qb = new QueryBuilder();
-			const { sql: query, params } = qb
-				.select()
-				.from(organizations)
-				.where(whereExpr)
-				.toSQL();
-			const fragment = query.replace(/^select .* from .* where\s+/i, "");
-			return { fragment, params };
-		}
-
-		case "auth.users": {
-			const fragment = `$1 = ANY("organization_ids")`;
-			return { fragment, params: [organizationId] };
-		}
+		case "auth.users":
+			return build(users, users.id, userId);
 
 		case "device_presence":
-			return build(
-				devicePresence,
-				devicePresence.organizationId,
-				organizationId,
-			);
+			return build(devicePresence, devicePresence.userId, userId);
 
 		case "agent_commands":
-			return build(agentCommands, agentCommands.organizationId, organizationId);
+			return build(agentCommands, agentCommands.userId, userId);
 
 		case "auth.apikeys":
 			return build(apikeys, apikeys.userId, userId);
@@ -113,8 +68,8 @@ export async function buildWhereClause(
 		case "integration_connections":
 			return build(
 				integrationConnections,
-				integrationConnections.organizationId,
-				organizationId,
+				integrationConnections.userId,
+				userId,
 			);
 
 		default:

@@ -1,8 +1,4 @@
-import type {
-	SelectTask,
-	SelectTaskStatus,
-	SelectUser,
-} from "@superset/db/schema";
+import type { SelectTask, SelectTaskStatus } from "@superset/db/schema";
 import { Badge } from "@superset/ui/badge";
 import { eq, isNull } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
@@ -28,13 +24,11 @@ import {
 import type { TabValue } from "../../components/TasksTopBar";
 import { compareTasks } from "../../utils/sorting";
 import { useHybridSearch } from "../useHybridSearch";
-import { AssigneeCell } from "./components/AssigneeCell";
 import { PriorityCell } from "./components/PriorityCell";
 import { StatusCell } from "./components/StatusCell";
 
 export type TaskWithStatus = SelectTask & {
 	status: SelectTaskStatus;
-	assignee: SelectUser | null;
 };
 
 const columnHelper = createColumnHelper<TaskWithStatus>();
@@ -42,13 +36,11 @@ const columnHelper = createColumnHelper<TaskWithStatus>();
 interface UseTasksTableParams {
 	filterTab: TabValue;
 	searchQuery: string;
-	assigneeFilter: string | null;
 }
 
 export function useTasksTable({
 	filterTab,
 	searchQuery,
-	assigneeFilter,
 }: UseTasksTableParams): {
 	table: Table<TaskWithStatus>;
 	isLoading: boolean;
@@ -66,13 +58,9 @@ export function useTasksTable({
 				.innerJoin({ status: collections.taskStatuses }, ({ tasks, status }) =>
 					eq(tasks.statusId, status.id),
 				)
-				.leftJoin({ assignee: collections.users }, ({ tasks, assignee }) =>
-					eq(tasks.assigneeId, assignee.id),
-				)
-				.select(({ tasks, status, assignee }) => ({
+				.select(({ tasks, status }) => ({
 					...tasks,
 					status,
-					assignee: assignee ?? null,
 				}))
 				.where(({ tasks }) => isNull(tasks.deletedAt)),
 		[collections],
@@ -101,14 +89,8 @@ export function useTasksTable({
 				value: filterTab,
 			});
 		}
-		if (assigneeFilter !== null) {
-			newColumnFilters.push({
-				id: "assigneeId",
-				value: assigneeFilter,
-			});
-		}
 		setColumnFilters(newColumnFilters);
-	}, [filterTab, assigneeFilter]);
+	}, [filterTab]);
 
 	const slugColumnWidth = useMemo(() => {
 		if (!data || data.length === 0) return "5rem";
@@ -242,20 +224,6 @@ export function useTasksTable({
 							</div>
 						</div>
 					);
-				},
-			}),
-
-			columnHelper.accessor("assigneeId", {
-				header: "Assignee",
-				filterFn: (row, _columnId, filterValue: string) => {
-					if (filterValue === "unassigned") {
-						return row.original.assigneeId === null;
-					}
-					return row.original.assigneeId === filterValue;
-				},
-				cell: (info) => {
-					if (info.cell.getIsPlaceholder()) return null;
-					return <AssigneeCell info={info} />;
 				},
 			}),
 

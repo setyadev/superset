@@ -6,10 +6,10 @@ import { calculateProgressForStates } from "./utils";
 
 export async function syncWorkflowStates({
 	client,
-	organizationId,
+	userId,
 }: {
 	client: LinearClient;
-	organizationId: string;
+	userId: string;
 }): Promise<void> {
 	const teams = await client.teams();
 
@@ -30,7 +30,7 @@ export async function syncWorkflowStates({
 		);
 
 		const values = states.nodes.map((state) => ({
-			organizationId,
+			userId,
 			name: state.name,
 			color: state.color,
 			type: state.type,
@@ -47,7 +47,7 @@ export async function syncWorkflowStates({
 				.values(values)
 				.onConflictDoUpdate({
 					target: [
-						taskStatuses.organizationId,
+						taskStatuses.userId,
 						taskStatuses.externalProvider,
 						taskStatuses.externalId,
 					],

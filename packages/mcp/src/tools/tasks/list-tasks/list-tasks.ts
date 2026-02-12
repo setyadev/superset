@@ -101,9 +101,7 @@ export function register(server: McpServer) {
 			const creator = alias(users, "creator");
 			const status = alias(taskStatuses, "status");
 
-			const conditions: SQL<unknown>[] = [
-				eq(tasks.organizationId, ctx.organizationId),
-			];
+			const conditions: SQL<unknown>[] = [eq(tasks.userId, ctx.userId)];
 
 			if (!includeDeleted) {
 				conditions.push(isNull(tasks.deletedAt));
@@ -151,7 +149,7 @@ export function register(server: McpServer) {
 					.from(taskStatuses)
 					.where(
 						and(
-							eq(taskStatuses.organizationId, ctx.organizationId),
+							eq(taskStatuses.userId, ctx.userId),
 							eq(taskStatuses.type, statusType),
 						),
 					);

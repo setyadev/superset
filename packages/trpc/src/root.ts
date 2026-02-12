@@ -6,7 +6,6 @@ import { analyticsRouter } from "./router/analytics";
 import { apiKeyRouter } from "./router/api-key";
 import { deviceRouter } from "./router/device";
 import { integrationRouter } from "./router/integration";
-import { organizationRouter } from "./router/organization";
 import { repositoryRouter } from "./router/repository";
 import { taskRouter } from "./router/task";
 import { userRouter } from "./router/user";
@@ -19,7 +18,6 @@ export const appRouter = createTRPCRouter({
 	analytics: analyticsRouter,
 	device: deviceRouter,
 	integration: integrationRouter,
-	organization: organizationRouter,
 	repository: repositoryRouter,
 	task: taskRouter,
 	user: userRouter,

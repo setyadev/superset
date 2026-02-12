@@ -4,10 +4,12 @@ import { Spinner } from "@superset/ui/spinner";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { FaGithub } from "react-icons/fa";
 import { FcGoogle } from "react-icons/fc";
+import { HiOutlineWifi } from "react-icons/hi2";
 import { env } from "renderer/env.renderer";
+import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
 import { authClient } from "renderer/lib/auth-client";
 import { electronTrpc } from "renderer/lib/electron-trpc";
-import { posthog } from "renderer/lib/posthog";
+import { enableOfflineMode, isOfflineMode } from "shared/offline-mode";
 import { SupersetLogo } from "./components/SupersetLogo";
 
 export const Route = createFileRoute("/sign-in/")({
@@ -17,9 +19,20 @@ export const Route = createFileRoute("/sign-in/")({
 function SignInPage() {
 	const { data: session, isPending } = authClient.useSession();
 	const signInMutation = electronTrpc.auth.signIn.useMutation();
+	const isOnline = useOnlineStatus();
 
 	// Dev bypass: skip sign-in entirely
 	if (env.SKIP_ENV_VALIDATION) {
+		return <Navigate to="/workspace" replace />;
+	}
+
+	// If already signed in, redirect to workspace
+	if (session?.user) {
+		return <Navigate to="/workspace" replace />;
+	}
+
+	// If in offline mode, redirect to workspace
+	if (isOfflineMode()) {
 		return <Navigate to="/workspace" replace />;
 	}
 
@@ -32,14 +45,13 @@ function SignInPage() {
 		);
 	}
 
-	// If already signed in, redirect to workspace
-	if (session?.user) {
-		return <Navigate to="/workspace" replace />;
-	}
-
 	const signIn = (provider: AuthProvider) => {
-		posthog.capture("auth_started", { provider });
 		signInMutation.mutate({ provider });
+	};
+
+	const continueOffline = () => {
+		enableOfflineMode();
+		window.location.href = "/workspace";
 	};
 
 	return (
@@ -61,27 +73,68 @@ function SignInPage() {
 						</p>
 					</div>
 
-					<div className="flex flex-col gap-3 w-full max-w-xs">
-						<Button
-							variant="outline"
-							size="lg"
-							onClick={() => signIn("github")}
-							className="w-full gap-3"
-						>
-							<FaGithub className="size-5" />
-							Continue with GitHub
-						</Button>
+					{isOnline ? (
+						<div className="flex flex-col gap-3 w-full max-w-xs">
+							<Button
+								variant="outline"
+								size="lg"
+								onClick={() => signIn("github")}
+								className="w-full gap-3"
+							>
+								<FaGithub className="size-5" />
+								Continue with GitHub
+							</Button>
 
-						<Button
-							variant="outline"
-							size="lg"
-							onClick={() => signIn("google")}
-							className="w-full gap-3"
-						>
-							<FcGoogle className="size-5" />
-							Continue with Google
-						</Button>
-					</div>
+							<Button
+								variant="outline"
+								size="lg"
+								onClick={() => signIn("google")}
+								className="w-full gap-3"
+							>
+								<FcGoogle className="size-5" />
+								Continue with Google
+							</Button>
+
+							<div className="relative my-2">
+								<div className="absolute inset-0 flex items-center">
+									<span className="w-full border-t border-border" />
+								</div>
+								<span className="relative flex justify-center text-xs text-muted-foreground bg-background px-2">
+									or
+								</span>
+							</div>
+
+							<Button
+								variant="secondary"
+								size="lg"
+								onClick={continueOffline}
+								className="w-full"
+							>
+								Skip Login
+							</Button>
+
+							<p className="text-xs text-muted-foreground text-center">
+								Use locally without cloud features
+							</p>
+						</div>
+					) : (
+						<div className="flex flex-col items-center gap-4 w-full max-w-xs p-6 border border-dashed border-border rounded-lg bg-muted/50">
+							<HiOutlineWifi className="size-8 text-muted-foreground" />
+							<div className="text-center">
+								<p className="text-sm text-muted-foreground">
+									You're currently offline
+								</p>
+							</div>
+							<Button
+								variant="secondary"
+								size="lg"
+								onClick={continueOffline}
+								className="w-full"
+							>
+								Continue Offline
+							</Button>
+						</div>
+					)}
 
 					<p className="mt-8 text-xs text-muted-foreground/70 text-center max-w-xs">
 						By signing in, you agree to our{" "}

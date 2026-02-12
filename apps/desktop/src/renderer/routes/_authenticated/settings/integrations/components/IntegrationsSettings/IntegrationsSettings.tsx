@@ -8,17 +8,11 @@ import {
 	CardHeader,
 } from "@superset/ui/card";
 import { Skeleton } from "@superset/ui/skeleton";
-import { useLiveQuery } from "@tanstack/react-db";
-import { useFeatureFlagEnabled } from "posthog-js/react";
 import { useCallback, useEffect, useState } from "react";
-import { FaGithub, FaSlack } from "react-icons/fa";
+import { FaGithub } from "react-icons/fa";
 import { HiCheckCircle, HiOutlineArrowTopRightOnSquare } from "react-icons/hi2";
-import { SiLinear } from "react-icons/si";
-import { GATED_FEATURES, usePaywall } from "renderer/components/Paywall";
 import { env } from "renderer/env.renderer";
 import { apiTrpcClient } from "renderer/lib/api-trpc-client";
-import { authClient } from "renderer/lib/auth-client";
-import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import {
 	isItemVisible,
 	SETTING_ITEM_ID,
@@ -41,119 +35,50 @@ interface GithubInstallation {
 export function IntegrationsSettings({
 	visibleItems,
 }: IntegrationsSettingsProps) {
-	const { data: session } = authClient.useSession();
-	const activeOrganizationId = session?.session?.activeOrganizationId;
-	const collections = useCollections();
-	const { gateFeature } = usePaywall();
-
-	const { data: integrations, isLoading: isLoadingIntegrations } = useLiveQuery(
-		(q) =>
-			q
-				.from({ integrationConnections: collections.integrationConnections })
-				.select(({ integrationConnections }) => integrationConnections),
-		[collections],
-	);
-
 	const [githubInstallation, setGithubInstallation] =
 		useState<GithubInstallation | null>(null);
 	const [isLoadingGithub, setIsLoadingGithub] = useState(true);
 
-	const hasGithubAccess = useFeatureFlagEnabled(
-		FEATURE_FLAGS.GITHUB_INTEGRATION_ACCESS,
-	);
-	const hasSlackAccess = useFeatureFlagEnabled(
-		FEATURE_FLAGS.SLACK_INTEGRATION_ACCESS,
-	);
+	const hasGithubAccess = FEATURE_FLAGS.GITHUB_INTEGRATION_ACCESS;
 
-	const showLinear = isItemVisible(
-		SETTING_ITEM_ID.INTEGRATIONS_LINEAR,
-		visibleItems,
-	);
 	const showGithub =
 		hasGithubAccess &&
 		isItemVisible(SETTING_ITEM_ID.INTEGRATIONS_GITHUB, visibleItems);
 
 	const fetchGithubInstallation = useCallback(async () => {
-		if (!activeOrganizationId) {
-			setIsLoadingGithub(false);
-			return;
-		}
-
 		try {
 			const result =
-				await apiTrpcClient.integration.github.getInstallation.query({
-					organizationId: activeOrganizationId,
-				});
+				await apiTrpcClient.integration.github.getInstallation.query();
 			setGithubInstallation(result);
 		} catch (err) {
 			console.error("[integrations] Failed to fetch GitHub installation:", err);
 		} finally {
 			setIsLoadingGithub(false);
 		}
-	}, [activeOrganizationId]);
+	}, []);
 
 	useEffect(() => {
 		fetchGithubInstallation();
 	}, [fetchGithubInstallation]);
 
-	const linearConnection = integrations?.find((i) => i.provider === "linear");
-	const slackConnection = integrations?.find((i) => i.provider === "slack");
-	const isLinearConnected = !!linearConnection;
-	const isSlackConnected = !!slackConnection;
 	const isGithubConnected =
 		!!githubInstallation && !githubInstallation.suspended;
-	const isLoading = isLoadingIntegrations || isLoadingGithub;
-
-	const showSlack =
-		hasSlackAccess &&
-		isItemVisible(SETTING_ITEM_ID.INTEGRATIONS_SLACK, visibleItems);
+	const isLoading = isLoadingGithub;
 
 	const handleOpenWeb = (path: string) => {
 		window.open(`${env.NEXT_PUBLIC_WEB_URL}${path}`, "_blank");
 	};
-
-	if (!activeOrganizationId) {
-		return (
-			<div className="p-6 max-w-4xl w-full">
-				<div className="mb-8">
-					<h2 className="text-xl font-semibold">Integrations</h2>
-					<p className="text-sm text-muted-foreground mt-1">
-						Connect external services to sync data
-					</p>
-				</div>
-				<p className="text-muted-foreground">
-					You need to be part of an organization to use integrations.
-				</p>
-			</div>
-		);
-	}
 
 	return (
 		<div className="p-6 max-w-4xl w-full">
 			<div className="mb-8">
 				<h2 className="text-xl font-semibold">Integrations</h2>
 				<p className="text-sm text-muted-foreground mt-1">
-					Connect external services to sync data with your organization
+					Connect external services to sync with your workspace
 				</p>
 			</div>
 
 			<div className="grid gap-4">
-				{showLinear && (
-					<IntegrationCard
-						name="Linear"
-						description="Sync issues bidirectionally with Linear"
-						icon={<SiLinear className="size-6" />}
-						isConnected={isLinearConnected}
-						connectedOrgName={linearConnection?.externalOrgName}
-						isLoading={isLoading}
-						onManage={() =>
-							gateFeature(GATED_FEATURES.INTEGRATIONS, () =>
-								handleOpenWeb("/integrations/linear"),
-							)
-						}
-					/>
-				)}
-
 				{showGithub && (
 					<IntegrationCard
 						name="GitHub"
@@ -162,27 +87,7 @@ export function IntegrationsSettings({
 						isConnected={isGithubConnected}
 						connectedOrgName={githubInstallation?.accountLogin}
 						isLoading={isLoading}
-						onManage={() =>
-							gateFeature(GATED_FEATURES.INTEGRATIONS, () =>
-								handleOpenWeb("/integrations/github"),
-							)
-						}
-					/>
-				)}
-
-				{showSlack && (
-					<IntegrationCard
-						name="Slack"
-						description="Manage tasks from Slack conversations"
-						icon={<FaSlack className="size-6" />}
-						isConnected={isSlackConnected}
-						connectedOrgName={slackConnection?.externalOrgName}
-						isLoading={isLoading}
-						onManage={() =>
-							gateFeature(GATED_FEATURES.INTEGRATIONS, () =>
-								handleOpenWeb("/integrations/slack"),
-							)
-						}
+						onManage={() => handleOpenWeb("/integrations/github")}
 					/>
 				)}
 			</div>

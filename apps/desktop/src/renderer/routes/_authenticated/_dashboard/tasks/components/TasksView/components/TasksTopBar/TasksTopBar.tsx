@@ -6,7 +6,6 @@ import { useAppHotkey } from "renderer/stores/hotkeys";
 import { ActiveIcon } from "../shared/icons/ActiveIcon";
 import { AllIssuesIcon } from "../shared/icons/AllIssuesIcon";
 import { BacklogIcon } from "../shared/icons/BacklogIcon";
-import { AssigneeFilter } from "./components/AssigneeFilter";
 
 export type TabValue = "all" | "active" | "backlog";
 
@@ -15,8 +14,6 @@ interface TasksTopBarProps {
 	onTabChange: (tab: TabValue) => void;
 	searchQuery: string;
 	onSearchChange: (query: string) => void;
-	assigneeFilter: string | null;
-	onAssigneeFilterChange: (value: string | null) => void;
 }
 
 const TABS = [
@@ -42,8 +39,6 @@ export function TasksTopBar({
 	onTabChange,
 	searchQuery,
 	onSearchChange,
-	assigneeFilter,
-	onAssigneeFilterChange,
 }: TasksTopBarProps) {
 	const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -80,13 +75,6 @@ export function TasksTopBar({
 						})}
 					</TabsList>
 				</Tabs>
-
-				<div className="h-4 w-px bg-border" />
-
-				<AssigneeFilter
-					value={assigneeFilter}
-					onChange={onAssigneeFilterChange}
-				/>
 			</div>
 
 			{/* Search on the right */}

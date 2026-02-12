@@ -10,13 +10,11 @@ interface McpTool {
 
 // Uses InMemoryTransport — no HTTP, no forgeable headers.
 export async function createSupersetMcpClient({
-	organizationId,
 	userId,
 }: {
-	organizationId: string;
 	userId: string;
 }): Promise<{ client: Client; cleanup: () => Promise<void> }> {
-	return createInMemoryMcpClient({ organizationId, userId });
+	return createInMemoryMcpClient({ userId });
 }
 
 export function mcpToolToAnthropicTool(

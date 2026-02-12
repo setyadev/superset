@@ -28,8 +28,10 @@ export async function POST(request: Request) {
 
 	const payload = webhookClient.parseData(Buffer.from(body), signature);
 
+	const organizationId = (payload as { organizationId?: string })
+		.organizationId;
 	// Store event with idempotent handling
-	const eventId = `${payload.organizationId}-${payload.webhookTimestamp}`;
+	const eventId = `${organizationId ?? "unknown"}-${payload.webhookTimestamp}`;
 
 	const [webhookEvent] = await db
 		.insert(webhookEvents)
@@ -68,12 +70,14 @@ export async function POST(request: Request) {
 		return Response.json({ success: true, message: "Event not ready" });
 	}
 
-	const connection = await db.query.integrationConnections.findFirst({
-		where: and(
-			eq(integrationConnections.externalOrgId, payload.organizationId),
-			eq(integrationConnections.provider, "linear"),
-		),
-	});
+	const connection = organizationId
+		? await db.query.integrationConnections.findFirst({
+				where: and(
+					eq(integrationConnections.externalOrgId, organizationId),
+					eq(integrationConnections.provider, "linear"),
+				),
+			})
+		: null;
 
 	if (!connection) {
 		await db
@@ -125,7 +129,7 @@ async function processIssueEvent(
 	if (payload.action === "create" || payload.action === "update") {
 		const taskStatus = await db.query.taskStatuses.findFirst({
 			where: and(
-				eq(taskStatuses.organizationId, connection.organizationId),
+				eq(taskStatuses.userId, connection.userId),
 				eq(taskStatuses.externalProvider, "linear"),
 				eq(taskStatuses.externalId, issue.state.id),
 			),
@@ -172,16 +176,12 @@ async function processIssueEvent(
 			.insert(tasks)
 			.values({
 				...taskData,
-				organizationId: connection.organizationId,
-				creatorId: connection.connectedByUserId,
+				userId: connection.userId,
+				creatorId: connection.userId,
 				createdAt: new Date(issue.createdAt),
 			})
 			.onConflictDoUpdate({
-				target: [
-					tasks.organizationId,
-					tasks.externalProvider,
-					tasks.externalId,
-				],
+				target: [tasks.userId, tasks.externalProvider, tasks.externalId],
 				set: { ...taskData, syncError: null },
 			});
 	} else if (payload.action === "remove") {

@@ -7,7 +7,6 @@ import { devtools } from "zustand/middleware";
  */
 export type SettingsSection =
 	| "account"
-	| "organization"
 	| "appearance"
 	| "ringtones"
 	| "keyboard"

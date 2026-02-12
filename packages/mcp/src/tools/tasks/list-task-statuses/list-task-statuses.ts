@@ -35,7 +35,7 @@ export function register(server: McpServer) {
 					position: taskStatuses.position,
 				})
 				.from(taskStatuses)
-				.where(eq(taskStatuses.organizationId, ctx.organizationId))
+				.where(eq(taskStatuses.userId, ctx.userId))
 				.orderBy(taskStatuses.position);
 
 			return {

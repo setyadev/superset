@@ -11,7 +11,7 @@ import { env } from "@/env";
 import { githubApp } from "../octokit";
 
 const bodySchema = z.object({
-	organizationId: z.string().uuid(),
+	userId: z.string().uuid(),
 });
 
 /**
@@ -39,12 +39,12 @@ export async function POST(request: Request) {
 		return Response.json({ error: "Invalid payload" }, { status: 400 });
 	}
 
-	const { organizationId } = parsed.data;
+	const { userId } = parsed.data;
 
 	const [installation] = await db
 		.select()
 		.from(githubInstallations)
-		.where(eq(githubInstallations.organizationId, organizationId))
+		.where(eq(githubInstallations.userId, userId))
 		.limit(1);
 
 	if (!installation) {

@@ -16,7 +16,6 @@ export function TasksView() {
 	const collections = useCollections();
 	const [currentTab, setCurrentTab] = useState<TabValue>("all");
 	const [searchQuery, setSearchQuery] = useState("");
-	const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
 
 	const { data: integrations, isLoading: isCheckingLinear } = useLiveQuery(
 		(q) =>
@@ -34,7 +33,6 @@ export function TasksView() {
 	const { table, isLoading, slugColumnWidth } = useTasksTable({
 		filterTab: currentTab,
 		searchQuery,
-		assigneeFilter,
 	});
 
 	const handleTaskClick = (task: TaskWithStatus) => {
@@ -59,8 +57,6 @@ export function TasksView() {
 					onTabChange={setCurrentTab}
 					searchQuery={searchQuery}
 					onSearchChange={setSearchQuery}
-					assigneeFilter={assigneeFilter}
-					onAssigneeFilterChange={setAssigneeFilter}
 				/>
 			)}
 

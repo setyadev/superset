@@ -1,5 +1,7 @@
 # Weekly Changelog Generation
 
+**⚠️ DEPRECATED: The marketing site (apps/marketing) has been removed from this repository.**
+
 Generate a new changelog entry for this week based on merged PRs.
 
 ## Instructions

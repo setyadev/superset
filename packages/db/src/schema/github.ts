@@ -10,22 +10,19 @@ import {
 	uuid,
 } from "drizzle-orm/pg-core";
 
-import { organizations, users } from "./auth";
+import { users } from "./auth";
 
 /**
- * GitHub App installations linked to Superset organizations.
- * One organization can have one GitHub installation.
+ * GitHub App installations linked to users.
+ * One user can have one GitHub installation.
  */
 export const githubInstallations = pgTable(
 	"github_installations",
 	{
 		id: uuid().primaryKey().defaultRandom(),
 
-		// Link to Superset organization
-		organizationId: uuid("organization_id")
-			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
-		connectedByUserId: uuid("connected_by_user_id")
+		// Link to user
+		userId: uuid("user_id")
 			.notNull()
 			.references(() => users.id, { onDelete: "cascade" }),
 
@@ -52,7 +49,7 @@ export const githubInstallations = pgTable(
 			.$onUpdate(() => new Date()),
 	},
 	(table) => [
-		unique("github_installations_org_unique").on(table.organizationId),
+		unique("github_installations_user_unique").on(table.userId),
 		index("github_installations_installation_id_idx").on(table.installationId),
 	],
 );

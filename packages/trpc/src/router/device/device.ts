@@ -1,6 +1,6 @@
 import { db } from "@superset/db/client";
-import { devicePresence, deviceTypeValues, users } from "@superset/db/schema";
-import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
+import { devicePresence, deviceTypeValues } from "@superset/db/schema";
+import type { TRPCRouterRecord } from "@trpc/server";
 import { and, eq, gt } from "drizzle-orm";
 import { z } from "zod";
 import { protectedProcedure } from "../../trpc";
@@ -21,14 +21,6 @@ export const deviceRouter = {
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const organizationId = ctx.session.session.activeOrganizationId;
-			if (!organizationId) {
-				throw new TRPCError({
-					code: "BAD_REQUEST",
-					message: "No active organization selected",
-				});
-			}
-
 			const userId = ctx.session.user.id;
 			const now = new Date();
 
@@ -36,7 +28,6 @@ export const deviceRouter = {
 				.insert(devicePresence)
 				.values({
 					userId,
-					organizationId,
 					deviceId: input.deviceId,
 					deviceName: input.deviceName,
 					deviceType: input.deviceType,
@@ -49,7 +40,6 @@ export const deviceRouter = {
 						deviceName: input.deviceName,
 						deviceType: input.deviceType,
 						lastSeenAt: now,
-						organizationId,
 					},
 				})
 				.returning();
@@ -58,14 +48,10 @@ export const deviceRouter = {
 		}),
 
 	/**
-	 * List online devices in the organization
+	 * List online devices for the current user
 	 */
 	listOnlineDevices: protectedProcedure.query(async ({ ctx }) => {
-		const organizationId = ctx.session.session.activeOrganizationId;
-		if (!organizationId) {
-			return [];
-		}
-
+		const userId = ctx.session.user.id;
 		const threshold = new Date(Date.now() - OFFLINE_THRESHOLD_MS);
 
 		const devices = await db
@@ -76,15 +62,11 @@ export const deviceRouter = {
 				deviceType: devicePresence.deviceType,
 				lastSeenAt: devicePresence.lastSeenAt,
 				createdAt: devicePresence.createdAt,
-				ownerId: devicePresence.userId,
-				ownerName: users.name,
-				ownerEmail: users.email,
 			})
 			.from(devicePresence)
-			.innerJoin(users, eq(devicePresence.userId, users.id))
 			.where(
 				and(
-					eq(devicePresence.organizationId, organizationId),
+					eq(devicePresence.userId, userId),
 					gt(devicePresence.lastSeenAt, threshold),
 				),
 			);

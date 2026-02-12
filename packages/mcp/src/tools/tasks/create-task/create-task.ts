@@ -94,7 +94,7 @@ export function register(server: McpServer) {
 					.from(taskStatuses)
 					.where(
 						and(
-							eq(taskStatuses.organizationId, ctx.organizationId),
+							eq(taskStatuses.userId, ctx.userId),
 							eq(taskStatuses.type, "backlog"),
 						),
 					)
@@ -120,22 +120,17 @@ export function register(server: McpServer) {
 			const existingTasks = await db
 				.select({ slug: tasks.slug })
 				.from(tasks)
-				.where(
-					and(
-						eq(tasks.organizationId, ctx.organizationId),
-						or(...slugConditions),
-					),
-				);
+				.where(and(eq(tasks.userId, ctx.userId), or(...slugConditions)));
 
 			const usedSlugs = new Set(existingTasks.map((t) => t.slug));
 
 			const taskValues: Array<{
+				userId: string;
 				slug: string;
 				title: string;
 				description: string | null;
 				priority: TaskPriority;
 				statusId: string;
-				organizationId: string;
 				creatorId: string;
 				assigneeId: string | null;
 				labels: string[];
@@ -155,12 +150,12 @@ export function register(server: McpServer) {
 				const statusId = input.statusId ?? (defaultStatusId as string);
 
 				taskValues.push({
+					userId: ctx.userId,
 					slug,
 					title: input.title,
 					description: input.description ?? null,
 					priority,
 					statusId,
-					organizationId: ctx.organizationId,
 					creatorId: ctx.userId,
 					assigneeId: input.assigneeId ?? null,
 					labels: input.labels ?? [],

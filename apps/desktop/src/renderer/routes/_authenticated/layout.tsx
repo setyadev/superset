@@ -9,7 +9,6 @@ import {
 import { DndProvider } from "react-dnd";
 import { HiOutlineWifi } from "react-icons/hi2";
 import { NewWorkspaceModal } from "renderer/components/NewWorkspaceModal";
-import { Paywall } from "renderer/components/Paywall";
 import { useUpdateListener } from "renderer/components/UpdateToast";
 import { env } from "renderer/env.renderer";
 import { useOnlineStatus } from "renderer/hooks/useOnlineStatus";
@@ -20,7 +19,7 @@ import { WorkspaceInitEffects } from "renderer/screens/main/components/Workspace
 import { useHotkeysSync } from "renderer/stores/hotkeys";
 import { useAgentHookListener } from "renderer/stores/tabs/useAgentHookListener";
 import { useWorkspaceInitStore } from "renderer/stores/workspace-init";
-import { MOCK_ORG_ID } from "shared/constants";
+import { enableOfflineMode, isOfflineMode } from "shared/offline-mode";
 import { AgentHooks } from "./components/AgentHooks";
 import { TeardownLogsDialog } from "./components/TeardownLogsDialog";
 import { CollectionsProvider } from "./providers/CollectionsProvider";
@@ -36,10 +35,15 @@ function AuthenticatedLayout() {
 	const navigate = useNavigate();
 	const utils = electronTrpc.useUtils();
 
-	const isSignedIn = env.SKIP_ENV_VALIDATION || !!session?.user;
-	const activeOrganizationId = env.SKIP_ENV_VALIDATION
-		? MOCK_ORG_ID
-		: session?.session?.activeOrganizationId;
+	// Check if offline mode is active
+	const offlineMode = isOfflineMode();
+
+	// Determine effective auth state
+	const isSignedIn =
+		env.SKIP_ENV_VALIDATION ||
+		!!session?.user ||
+		offlineMode ||
+		(!isOnline && hasLocalToken);
 
 	useAgentHookListener();
 	useUpdateListener();
@@ -73,7 +77,7 @@ function AuthenticatedLayout() {
 		},
 	});
 
-	if (isPending && !env.SKIP_ENV_VALIDATION) {
+	if (isPending && !env.SKIP_ENV_VALIDATION && !offlineMode) {
 		if (hasLocalToken) {
 			return (
 				<div className="flex h-screen w-screen items-center justify-center bg-background">
@@ -94,19 +98,27 @@ function AuthenticatedLayout() {
 						Connect to the internet to continue
 					</p>
 				</div>
-				<Button variant="outline" size="sm" onClick={() => refetch()}>
-					Retry
-				</Button>
+				<div className="flex gap-2">
+					<Button variant="outline" size="sm" onClick={() => refetch()}>
+						Retry
+					</Button>
+					<Button
+						variant="secondary"
+						size="sm"
+						onClick={() => {
+							enableOfflineMode();
+							window.location.reload();
+						}}
+					>
+						Continue Offline
+					</Button>
+				</div>
 			</div>
 		);
 	}
 
 	if (!isSignedIn) {
 		return <Navigate to="/sign-in" replace />;
-	}
-
-	if (!activeOrganizationId) {
-		return <Navigate to="/create-organization" replace />;
 	}
 
 	return (
@@ -117,7 +129,6 @@ function AuthenticatedLayout() {
 				<WorkspaceInitEffects />
 				<NewWorkspaceModal />
 				<TeardownLogsDialog />
-				<Paywall />
 			</CollectionsProvider>
 		</DndProvider>
 	);

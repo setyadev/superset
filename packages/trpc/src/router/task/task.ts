@@ -43,15 +43,13 @@ export const taskRouter = {
 			.orderBy(desc(tasks.createdAt));
 	}),
 
-	byOrganization: publicProcedure
-		.input(z.string().uuid())
-		.query(({ input }) => {
-			return db
-				.select()
-				.from(tasks)
-				.where(and(eq(tasks.organizationId, input), isNull(tasks.deletedAt)))
-				.orderBy(desc(tasks.createdAt));
-		}),
+	byUser: publicProcedure.input(z.string().uuid()).query(({ input }) => {
+		return db
+			.select()
+			.from(tasks)
+			.where(and(eq(tasks.userId, input), isNull(tasks.deletedAt)))
+			.orderBy(desc(tasks.createdAt));
+	}),
 
 	byId: publicProcedure.input(z.string().uuid()).query(async ({ input }) => {
 		const [task] = await db
@@ -79,6 +77,7 @@ export const taskRouter = {
 					.insert(tasks)
 					.values({
 						...input,
+						userId: ctx.session.user.id,
 						creatorId: ctx.session.user.id,
 						labels: input.labels ?? [],
 					})

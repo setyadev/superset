@@ -51,10 +51,10 @@ You are running fully autonomously. Do not ask questions or wait for user feedba
 
 async function fetchTask({
 	taskId,
-	organizationId,
+	userId,
 }: {
 	taskId: string;
-	organizationId: string;
+	userId: string;
 }) {
 	const status = alias(taskStatuses, "status");
 	const [task] = await db
@@ -72,7 +72,7 @@ async function fetchTask({
 		.where(
 			and(
 				eq(tasks.id, taskId),
-				eq(tasks.organizationId, organizationId),
+				eq(tasks.userId, userId),
 				isNull(tasks.deletedAt),
 			),
 		)
@@ -151,7 +151,7 @@ export function register(server: McpServer) {
 
 			const task = await fetchTask({
 				taskId: validated.taskId,
-				organizationId: ctx.organizationId,
+				userId: ctx.userId,
 			});
 			if (!task) return ERROR_TASK_NOT_FOUND;
 
@@ -185,7 +185,7 @@ export function register(server: McpServer) {
 
 			const task = await fetchTask({
 				taskId: validated.taskId,
-				organizationId: ctx.organizationId,
+				userId: ctx.userId,
 			});
 			if (!task) return ERROR_TASK_NOT_FOUND;
 

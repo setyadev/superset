@@ -18,7 +18,7 @@ const receiver = new Receiver({
 
 const payloadSchema = z.object({
 	installationDbId: z.string().uuid(),
-	organizationId: z.string().uuid(),
+	userId: z.string().uuid(),
 });
 
 export async function POST(request: Request) {

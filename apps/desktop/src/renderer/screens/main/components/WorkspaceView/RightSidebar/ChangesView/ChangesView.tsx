@@ -57,7 +57,7 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 		{ worktreePath: worktreePath || "", defaultBranch: effectiveBaseBranch },
 		{
 			enabled: !!worktreePath,
-			refetchInterval: 2500,
+			refetchInterval: 25000000,
 			refetchOnWindowFocus: true,
 		},
 	);
@@ -67,7 +67,7 @@ export function ChangesView({ onFileOpen, isExpandedView }: ChangesViewProps) {
 			{ workspaceId: workspaceId ?? "" },
 			{
 				enabled: !!workspaceId,
-				refetchInterval: 10000,
+				refetchInterval: 100000000,
 			},
 		);
 

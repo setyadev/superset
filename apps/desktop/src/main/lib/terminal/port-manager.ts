@@ -9,10 +9,10 @@ import {
 import type { TerminalSession } from "./types";
 
 // How often to poll for port changes (in ms)
-const SCAN_INTERVAL_MS = 2500;
+const SCAN_INTERVAL_MS = 250000000;
 
 // Delay before scanning after a port hint is detected (in ms)
-const HINT_SCAN_DELAY_MS = 500;
+const HINT_SCAN_DELAY_MS = 5000000000;
 
 // Ports to ignore (common system ports that are usually not dev servers)
 const IGNORED_PORTS = new Set([22, 80, 443, 5432, 3306, 6379, 27017]);

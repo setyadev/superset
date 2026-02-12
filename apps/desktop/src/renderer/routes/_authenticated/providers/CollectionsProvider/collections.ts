@@ -3,9 +3,6 @@ import type {
 	SelectAgentCommand,
 	SelectDevicePresence,
 	SelectIntegrationConnection,
-	SelectInvitation,
-	SelectMember,
-	SelectOrganization,
 	SelectRepository,
 	SelectTask,
 	SelectTaskStatus,
@@ -19,25 +16,22 @@ import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
 import { env } from "renderer/env.renderer";
 import { getAuthToken } from "renderer/lib/auth-client";
 import superjson from "superjson";
-import { z } from "zod";
 
 const columnMapper = snakeCamelMapper();
 const electricUrl = `${env.NEXT_PUBLIC_API_URL}/api/electric/v1/shape`;
 
-interface OrgCollections {
+interface Collections {
 	tasks: Collection<SelectTask>;
 	taskStatuses: Collection<SelectTaskStatus>;
 	repositories: Collection<SelectRepository>;
-	members: Collection<SelectMember>;
 	users: Collection<SelectUser>;
-	invitations: Collection<SelectInvitation>;
 	agentCommands: Collection<SelectAgentCommand>;
 	devicePresence: Collection<SelectDevicePresence>;
 	integrationConnections: Collection<SelectIntegrationConnection>;
 }
 
-// Per-org collections cache
-const collectionsCache = new Map<string, OrgCollections>();
+// Collections cache
+const collectionsCache = new Map<string, Collections>();
 
 // Singleton API client with dynamic auth headers
 const apiClient = createTRPCProxyClient<AppRouter>({
@@ -53,53 +47,7 @@ const apiClient = createTRPCProxyClient<AppRouter>({
 	],
 });
 
-const organizationsCollection = createCollection(
-	electricCollectionOptions<SelectOrganization>({
-		id: "organizations",
-		shapeOptions: {
-			url: electricUrl,
-			params: { table: "auth.organizations" },
-			headers: {
-				Authorization: () => {
-					const token = getAuthToken();
-					return token ? `Bearer ${token}` : "";
-				},
-			},
-			columnMapper,
-		},
-		getKey: (item) => item.id,
-	}),
-);
-
-const apiKeyDisplaySchema = z.object({
-	id: z.string(),
-	name: z.string().nullable(),
-	start: z.string().nullable(),
-	createdAt: z.coerce.date(),
-	lastRequest: z.coerce.date().nullable(),
-});
-
-type ApiKeyDisplay = z.infer<typeof apiKeyDisplaySchema>;
-
-const apiKeysCollection = createCollection(
-	electricCollectionOptions<ApiKeyDisplay>({
-		id: "apikeys",
-		shapeOptions: {
-			url: electricUrl,
-			params: { table: "auth.apikeys" },
-			headers: {
-				Authorization: () => {
-					const token = getAuthToken();
-					return token ? `Bearer ${token}` : "";
-				},
-			},
-			columnMapper,
-		},
-		getKey: (item) => item.id,
-	}),
-);
-
-function createOrgCollections(organizationId: string): OrgCollections {
+function createCollections(): Collections {
 	const headers = {
 		Authorization: () => {
 			const token = getAuthToken();
@@ -109,12 +57,11 @@ function createOrgCollections(organizationId: string): OrgCollections {
 
 	const tasks = createCollection(
 		electricCollectionOptions<SelectTask>({
-			id: `tasks-${organizationId}`,
+			id: "tasks",
 			shapeOptions: {
 				url: electricUrl,
 				params: {
 					table: "tasks",
-					organizationId,
 				},
 				headers,
 				columnMapper,
@@ -143,12 +90,11 @@ function createOrgCollections(organizationId: string): OrgCollections {
 
 	const taskStatuses = createCollection(
 		electricCollectionOptions<SelectTaskStatus>({
-			id: `task_statuses-${organizationId}`,
+			id: "task_statuses",
 			shapeOptions: {
 				url: electricUrl,
 				params: {
 					table: "task_statuses",
-					organizationId,
 				},
 				headers,
 				columnMapper,
@@ -159,12 +105,11 @@ function createOrgCollections(organizationId: string): OrgCollections {
 
 	const repositories = createCollection(
 		electricCollectionOptions<SelectRepository>({
-			id: `repositories-${organizationId}`,
+			id: "repositories",
 			shapeOptions: {
 				url: electricUrl,
 				params: {
 					table: "repositories",
-					organizationId,
 				},
 				headers,
 				columnMapper,
@@ -183,46 +128,13 @@ function createOrgCollections(organizationId: string): OrgCollections {
 		}),
 	);
 
-	const members = createCollection(
-		electricCollectionOptions<SelectMember>({
-			id: `members-${organizationId}`,
-			shapeOptions: {
-				url: electricUrl,
-				params: {
-					table: "auth.members",
-					organizationId,
-				},
-				headers,
-				columnMapper,
-			},
-			getKey: (item) => item.id,
-		}),
-	);
-
 	const users = createCollection(
 		electricCollectionOptions<SelectUser>({
-			id: `users-${organizationId}`,
+			id: "users",
 			shapeOptions: {
 				url: electricUrl,
 				params: {
 					table: "auth.users",
-					organizationId,
-				},
-				headers,
-				columnMapper,
-			},
-			getKey: (item) => item.id,
-		}),
-	);
-
-	const invitations = createCollection(
-		electricCollectionOptions<SelectInvitation>({
-			id: `invitations-${organizationId}`,
-			shapeOptions: {
-				url: electricUrl,
-				params: {
-					table: "auth.invitations",
-					organizationId,
 				},
 				headers,
 				columnMapper,
@@ -233,12 +145,11 @@ function createOrgCollections(organizationId: string): OrgCollections {
 
 	const agentCommands = createCollection(
 		electricCollectionOptions<SelectAgentCommand>({
-			id: `agent_commands-${organizationId}`,
+			id: "agent_commands",
 			shapeOptions: {
 				url: electricUrl,
 				params: {
 					table: "agent_commands",
-					organizationId,
 				},
 				headers,
 				columnMapper,
@@ -265,12 +176,11 @@ function createOrgCollections(organizationId: string): OrgCollections {
 
 	const devicePresence = createCollection(
 		electricCollectionOptions<SelectDevicePresence>({
-			id: `device_presence-${organizationId}`,
+			id: "device_presence",
 			shapeOptions: {
 				url: electricUrl,
 				params: {
 					table: "device_presence",
-					organizationId,
 				},
 				headers,
 				columnMapper,
@@ -281,12 +191,11 @@ function createOrgCollections(organizationId: string): OrgCollections {
 
 	const integrationConnections = createCollection(
 		electricCollectionOptions<SelectIntegrationConnection>({
-			id: `integration_connections-${organizationId}`,
+			id: "integration_connections",
 			shapeOptions: {
 				url: electricUrl,
 				params: {
 					table: "integration_connections",
-					organizationId,
 				},
 				headers,
 				columnMapper,
@@ -299,9 +208,7 @@ function createOrgCollections(organizationId: string): OrgCollections {
 		tasks,
 		taskStatuses,
 		repositories,
-		members,
 		users,
-		invitations,
 		agentCommands,
 		devicePresence,
 		integrationConnections,
@@ -309,24 +216,19 @@ function createOrgCollections(organizationId: string): OrgCollections {
 }
 
 /**
- * Get collections for an organization, creating them if needed.
- * Collections are cached per org for instant switching.
+ * Get collections, creating them if needed.
  * Auth token is read dynamically via getAuthToken() - no need to pass it.
  */
-export function getCollections(organizationId: string) {
-	// Get or create org-specific collections
-	if (!collectionsCache.has(organizationId)) {
-		collectionsCache.set(organizationId, createOrgCollections(organizationId));
+export function getCollections() {
+	// Get or create collections
+	if (!collectionsCache.has("default")) {
+		collectionsCache.set("default", createCollections());
 	}
 
-	const orgCollections = collectionsCache.get(organizationId);
-	if (!orgCollections) {
-		throw new Error(`Collections not found for org: ${organizationId}`);
+	const collections = collectionsCache.get("default");
+	if (!collections) {
+		throw new Error("Collections not found");
 	}
 
-	return {
-		...orgCollections,
-		organizations: organizationsCollection,
-		apiKeys: apiKeysCollection,
-	};
+	return collections;
 }

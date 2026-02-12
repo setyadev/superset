@@ -13,7 +13,7 @@ import {
 	uuid,
 } from "drizzle-orm/pg-core";
 
-import { organizations, users } from "./auth";
+import { users } from "./auth";
 import {
 	commandStatusValues,
 	deviceTypeValues,
@@ -36,9 +36,9 @@ export const repositories = pgTable(
 	"repositories",
 	{
 		id: uuid().primaryKey().defaultRandom(),
-		organizationId: uuid("organization_id")
+		userId: uuid("user_id")
 			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
+			.references(() => users.id, { onDelete: "cascade" }),
 		name: text().notNull(),
 		slug: text().notNull(),
 		repoUrl: text("repo_url").notNull(),
@@ -52,9 +52,9 @@ export const repositories = pgTable(
 			.$onUpdate(() => new Date()),
 	},
 	(table) => [
-		index("repositories_organization_id_idx").on(table.organizationId),
+		index("repositories_user_id_idx").on(table.userId),
 		index("repositories_slug_idx").on(table.slug),
-		unique("repositories_org_slug_unique").on(table.organizationId, table.slug),
+		unique("repositories_user_slug_unique").on(table.userId, table.slug),
 	],
 );
 
@@ -65,9 +65,9 @@ export const taskStatuses = pgTable(
 	"task_statuses",
 	{
 		id: uuid().primaryKey().defaultRandom(),
-		organizationId: uuid("organization_id")
+		userId: uuid("user_id")
 			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
+			.references(() => users.id, { onDelete: "cascade" }),
 
 		name: text().notNull(),
 		color: text().notNull(),
@@ -86,10 +86,10 @@ export const taskStatuses = pgTable(
 			.$onUpdate(() => new Date()),
 	},
 	(table) => [
-		index("task_statuses_organization_id_idx").on(table.organizationId),
+		index("task_statuses_user_id_idx").on(table.userId),
 		index("task_statuses_type_idx").on(table.type),
-		unique("task_statuses_org_external_unique").on(
-			table.organizationId,
+		unique("task_statuses_user_external_unique").on(
+			table.userId,
 			table.externalProvider,
 			table.externalId,
 		),
@@ -114,9 +114,9 @@ export const tasks = pgTable(
 		priority: taskPriority().notNull().default("none"),
 
 		// Ownership
-		organizationId: uuid("organization_id")
+		userId: uuid("user_id")
 			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
+			.references(() => users.id, { onDelete: "cascade" }),
 		repositoryId: uuid("repository_id").references(() => repositories.id, {
 			onDelete: "cascade",
 		}),
@@ -157,7 +157,7 @@ export const tasks = pgTable(
 	},
 	(table) => [
 		index("tasks_slug_idx").on(table.slug),
-		index("tasks_organization_id_idx").on(table.organizationId),
+		index("tasks_user_id_idx").on(table.userId),
 		index("tasks_repository_id_idx").on(table.repositoryId),
 		index("tasks_assignee_id_idx").on(table.assigneeId),
 		index("tasks_creator_id_idx").on(table.creatorId),
@@ -165,11 +165,11 @@ export const tasks = pgTable(
 		index("tasks_created_at_idx").on(table.createdAt),
 		index("tasks_external_provider_idx").on(table.externalProvider),
 		unique("tasks_external_unique").on(
-			table.organizationId,
+			table.userId,
 			table.externalProvider,
 			table.externalId,
 		),
-		unique("tasks_org_slug_unique").on(table.organizationId, table.slug),
+		unique("tasks_user_slug_unique").on(table.userId, table.slug),
 	],
 );
 
@@ -181,10 +181,7 @@ export const integrationConnections = pgTable(
 	"integration_connections",
 	{
 		id: uuid().primaryKey().defaultRandom(),
-		organizationId: uuid("organization_id")
-			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
-		connectedByUserId: uuid("connected_by_user_id")
+		userId: uuid("user_id")
 			.notNull()
 			.references(() => users.id, { onDelete: "cascade" }),
 
@@ -207,11 +204,8 @@ export const integrationConnections = pgTable(
 			.$onUpdate(() => new Date()),
 	},
 	(table) => [
-		unique("integration_connections_unique").on(
-			table.organizationId,
-			table.provider,
-		),
-		index("integration_connections_org_idx").on(table.organizationId),
+		unique("integration_connections_unique").on(table.userId, table.provider),
+		index("integration_connections_user_idx").on(table.userId),
 	],
 );
 
@@ -220,15 +214,15 @@ export type InsertIntegrationConnection =
 export type SelectIntegrationConnection =
 	typeof integrationConnections.$inferSelect;
 
-// Stripe subscriptions (org-based billing)
+// Stripe subscriptions (user-based billing)
 export const subscriptions = pgTable(
 	"subscriptions",
 	{
 		id: uuid().primaryKey().defaultRandom(),
 		plan: text().notNull(),
-		referenceId: uuid("reference_id")
+		userId: uuid("user_id")
 			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
+			.references(() => users.id, { onDelete: "cascade" }),
 		stripeCustomerId: text("stripe_customer_id"),
 		stripeSubscriptionId: text("stripe_subscription_id"),
 		status: text().default("incomplete").notNull(),
@@ -240,7 +234,6 @@ export const subscriptions = pgTable(
 		cancelAt: timestamp("cancel_at"),
 		canceledAt: timestamp("canceled_at"),
 		endedAt: timestamp("ended_at"),
-		seats: integer(),
 		createdAt: timestamp("created_at").notNull().defaultNow(),
 		updatedAt: timestamp("updated_at")
 			.notNull()
@@ -248,7 +241,7 @@ export const subscriptions = pgTable(
 			.$onUpdate(() => new Date()),
 	},
 	(table) => [
-		index("subscriptions_reference_id_idx").on(table.referenceId),
+		index("subscriptions_user_id_idx").on(table.userId),
 		index("subscriptions_stripe_customer_id_idx").on(table.stripeCustomerId),
 		index("subscriptions_status_idx").on(table.status),
 	],
@@ -265,9 +258,6 @@ export const devicePresence = pgTable(
 		userId: uuid("user_id")
 			.notNull()
 			.references(() => users.id, { onDelete: "cascade" }),
-		organizationId: uuid("organization_id")
-			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
 		deviceId: text("device_id").notNull(),
 		deviceName: text("device_name").notNull(),
 		deviceType: deviceType("device_type").notNull(),
@@ -275,10 +265,6 @@ export const devicePresence = pgTable(
 		createdAt: timestamp("created_at").notNull().defaultNow(),
 	},
 	(table) => [
-		index("device_presence_user_org_idx").on(
-			table.userId,
-			table.organizationId,
-		),
 		uniqueIndex("device_presence_user_device_idx").on(
 			table.userId,
 			table.deviceId,
@@ -298,9 +284,6 @@ export const agentCommands = pgTable(
 		userId: uuid("user_id")
 			.notNull()
 			.references(() => users.id, { onDelete: "cascade" }),
-		organizationId: uuid("organization_id")
-			.notNull()
-			.references(() => organizations.id, { onDelete: "cascade" }),
 		targetDeviceId: text("target_device_id"),
 		targetDeviceType: text("target_device_type"),
 		tool: text().notNull(),
@@ -321,10 +304,7 @@ export const agentCommands = pgTable(
 			table.targetDeviceId,
 			table.status,
 		),
-		index("agent_commands_org_created_idx").on(
-			table.organizationId,
-			table.createdAt,
-		),
+		index("agent_commands_user_created_idx").on(table.userId, table.createdAt),
 	],
 );
 

@@ -7,9 +7,6 @@ export const env = createEnv({
 			.enum(["development", "production", "test"])
 			.default("development"),
 		BLOB_READ_WRITE_TOKEN: z.string().min(1),
-		POSTHOG_API_KEY: z.string(),
-		POSTHOG_API_HOST: z.string().url().default("https://us.posthog.com"),
-		POSTHOG_PROJECT_ID: z.string(),
 		QSTASH_TOKEN: z.string().min(1),
 		QSTASH_CURRENT_SIGNING_KEY: z.string().min(1),
 		QSTASH_NEXT_SIGNING_KEY: z.string().min(1),

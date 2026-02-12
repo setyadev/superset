@@ -36,11 +36,11 @@ export function mapPriorityFromLinear(linearPriority: number): Priority {
 }
 
 export async function getLinearClient(
-	organizationId: string,
+	userId: string,
 ): Promise<LinearClient | null> {
 	const connection = await db.query.integrationConnections.findFirst({
 		where: and(
-			eq(integrationConnections.organizationId, organizationId),
+			eq(integrationConnections.userId, userId),
 			eq(integrationConnections.provider, "linear"),
 		),
 	});

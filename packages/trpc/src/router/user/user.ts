@@ -1,45 +1,14 @@
 import { db } from "@superset/db/client";
-import { members, users } from "@superset/db/schema";
+import { users } from "@superset/db/schema";
 import { TRPCError, type TRPCRouterRecord } from "@trpc/server";
 import { del, put } from "@vercel/blob";
-import { and, desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { protectedProcedure } from "../../trpc";
 
 export const userRouter = {
 	me: protectedProcedure.query(({ ctx }) => ctx.session.user),
-
-	myOrganization: protectedProcedure.query(async ({ ctx }) => {
-		const activeOrganizationId = ctx.session.session.activeOrganizationId;
-
-		const membership = await db.query.members.findFirst({
-			where: activeOrganizationId
-				? and(
-						eq(members.userId, ctx.session.user.id),
-						eq(members.organizationId, activeOrganizationId),
-					)
-				: eq(members.userId, ctx.session.user.id),
-			orderBy: desc(members.createdAt),
-			with: {
-				organization: true,
-			},
-		});
-
-		return membership?.organization ?? null;
-	}),
-
-	myOrganizations: protectedProcedure.query(async ({ ctx }) => {
-		const memberships = await db.query.members.findMany({
-			where: eq(members.userId, ctx.session.user.id),
-			orderBy: desc(members.createdAt),
-			with: {
-				organization: true,
-			},
-		});
-
-		return memberships.map((m) => m.organization);
-	}),
 
 	updateProfile: protectedProcedure
 		.input(z.object({ name: z.string().min(1).max(100) }))

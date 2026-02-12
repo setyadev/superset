@@ -52,7 +52,7 @@ export async function executeOnDevice({
 		.where(
 			and(
 				eq(devicePresence.deviceId, deviceId),
-				eq(devicePresence.organizationId, ctx.organizationId),
+				eq(devicePresence.userId, ctx.userId),
 				gt(devicePresence.lastSeenAt, threshold),
 			),
 		)
@@ -74,7 +74,6 @@ export async function executeOnDevice({
 		.insert(agentCommands)
 		.values({
 			userId: ctx.userId,
-			organizationId: ctx.organizationId,
 			targetDeviceId: deviceId,
 			targetDeviceType: device.deviceType,
 			tool,

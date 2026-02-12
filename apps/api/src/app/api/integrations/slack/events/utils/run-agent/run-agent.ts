@@ -56,7 +56,7 @@ interface RunSlackAgentParams {
 	prompt: string;
 	channelId: string;
 	threadTs: string;
-	organizationId: string;
+	userId: string;
 	slackToken: string;
 	onProgress?: (status: string) => void | Promise<void>;
 }
@@ -99,220 +99,141 @@ function getActionFromToolResult(
 	// biome-ignore lint/suspicious/noExplicitAny: MCP result varies by tool
 	result: any,
 ): AgentAction | null {
-	const data = result.structuredContent ?? parseTextContent(result.content);
-	if (!data) return null;
+	if (!result?.structuredContent) return null;
 
-	if (toolName === "create_task" && data.created) {
-		return {
-			type: "task_created",
-			tasks: data.created.map(
-				(t: { id: string; slug: string; title: string }) => ({
-					id: t.id,
-					slug: t.slug,
-					title: t.title,
-					status: "Backlog",
-				}),
-			),
-		};
-	}
+	const content = result.structuredContent;
 
-	if (toolName === "update_task" && data.updated) {
-		return {
-			type: "task_updated",
-			tasks: data.updated.map(
-				(t: { id: string; slug: string; title: string }) => ({
-					id: t.id,
-					slug: t.slug,
-					title: t.title,
-				}),
-			),
-		};
-	}
-
-	if (toolName === "delete_task" && data.deleted) {
-		return {
-			type: "task_deleted",
-			tasks: (
-				data.deleted as { id: string; slug: string; title: string }[]
-			).map((t) => ({
-				id: t.id,
-				slug: t.slug,
-				title: t.title,
-			})),
-		};
-	}
-
-	if (toolName === "create_workspace" && data.workspaceId) {
-		return {
-			type: "workspace_created",
-			workspaces: [
-				{
-					id: data.workspaceId,
-					name: data.workspaceName,
-					branch: data.branch,
-				},
-			],
-		};
-	}
-
-	if (
-		(toolName === "switch_workspace" || toolName === "navigate_to_workspace") &&
-		data.workspaceId
-	) {
-		return {
-			type: "workspace_switched",
-			workspaces: [
-				{
-					id: data.workspaceId,
-					name: data.workspaceName,
-					branch: data.branch,
-				},
-			],
-		};
+	switch (toolName) {
+		case "create_task":
+			if (content.created?.length > 0) {
+				return {
+					type: "task_created",
+					tasks: content.created,
+				};
+			}
+			break;
+		case "update_task":
+			if (content.updated?.length > 0) {
+				return {
+					type: "task_updated",
+					tasks: content.updated,
+				};
+			}
+			break;
+		case "delete_task":
+			if (content.deleted?.length > 0) {
+				return {
+					type: "task_deleted",
+					tasks: content.deleted.map((id: string) => ({
+						id,
+						slug: id,
+						title: id,
+					})),
+				};
+			}
+			break;
+		case "create_workspace":
+			if (content.workspaces?.length > 0) {
+				return {
+					type: "workspace_created",
+					workspaces: content.workspaces,
+				};
+			}
+			break;
+		case "switch_workspace":
+			if (content.workspaces?.length > 0) {
+				return {
+					type: "workspace_switched",
+					workspaces: content.workspaces,
+				};
+			}
+			break;
 	}
 
 	return null;
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: MCP content is loosely typed
-function parseTextContent(content: any): Record<string, unknown> | null {
-	try {
-		const contentItem = content?.[0];
-		if (
-			!contentItem ||
-			typeof contentItem !== "object" ||
-			!("text" in contentItem)
-		) {
-			return null;
-		}
-		return JSON.parse(contentItem.text as string);
-	} catch {
-		return null;
-	}
-}
-
-const TOOL_PROGRESS_STATUS: Record<string, string> = {
-	create_task: "Creating task...",
-	update_task: "Updating task...",
-	delete_task: "Deleting task...",
-	list_tasks: "Searching tasks...",
-	get_task: "Fetching task details...",
-	create_workspace: "Creating workspace...",
-	list_workspaces: "Fetching workspaces...",
-	list_projects: "Fetching projects...",
-	slack_get_channel_history: "Reading channel history...",
-};
-
-// Tools excluded from Slack agent context
-const DENIED_SUPERSET_TOOLS = new Set([
-	"navigate_to_workspace",
-	"switch_workspace",
-	"get_app_context",
-	"list_members",
-	"list_task_statuses",
-	"list_devices",
-]);
-
-const SLACK_GET_CHANNEL_HISTORY_TOOL: Anthropic.Tool = {
-	name: "slack_get_channel_history",
-	description:
-		"Get recent messages from the current Slack channel. Use this to understand what the team has been discussing.",
-	input_schema: {
-		type: "object" as const,
-		properties: {
-			limit: {
-				type: "number",
-				description: "Number of messages to retrieve (default 20, max 100)",
-			},
-		},
-		required: [],
-	},
-};
-
-async function handleGetChannelHistory({
-	token,
-	channelId,
-	limit = 20,
-}: {
-	token: string;
-	channelId: string;
-	limit?: number;
-}): Promise<string> {
+async function handleGetChannelHistory(
+	_mcpClient: Client,
+	token: string,
+	channelId: string,
+	limit?: number,
+	// biome-ignore lint/suspicious/noExplicitAny: Slack message type is complex
+): Promise<any> {
 	const slack = new WebClient(token);
 	const result = await slack.conversations.history({
 		channel: channelId,
-		limit: Math.min(limit, 100),
+		limit: limit ?? 10,
 	});
 
-	if (!result.messages || result.messages.length === 0) {
-		return JSON.stringify({ messages: [] });
-	}
+	const messages =
+		result.messages?.map((msg) => ({
+			user: msg.user,
+			text: msg.text,
+			ts: msg.ts,
+		})) ?? [];
 
-	const messages = result.messages.map((msg) => ({
-		user: msg.user,
-		text: msg.text,
-		ts: msg.ts,
-		thread_ts: msg.thread_ts,
-	}));
-
-	return JSON.stringify({ messages });
+	return { messages };
 }
 
-const SYSTEM_PROMPT = `You are a helpful assistant in Slack for Superset, a task management application.
+function parseTextContent(content: Anthropic.Messages.ContentBlock[]): string {
+	return content
+		.filter((b): b is Anthropic.TextBlock => b.type === "text")
+		.map((b) => b.text)
+		.join("");
+}
 
-You can:
-- Create, update, search, and manage tasks using superset_* tools
-- Read recent channel messages using slack_get_channel_history
-- Search the web for current information using web_search
-- Help users understand conversations and create actionable items from discussions
+// Tools that should not be exposed to the Slack agent
+const DENIED_SUPERSET_TOOLS = new Set([
+	"create_workspace",
+	"switch_workspace",
+	"delete_workspace",
+	"update_workspace",
+	"navigate_to_workspace",
+	"start_claude_session",
+]);
 
-Guidelines:
-- Be concise and clear (this is Slack, not email)
-- When creating tasks, extract key details from the conversation
-- Use Slack formatting: *bold*, _italic_, \`code\`, > quotes
-- If an action fails, explain what went wrong and suggest alternatives
-- When answering questions that need up-to-date info, use web_search to find current information
-- Cite sources when sharing information from web search results
+// Server-side tools handled via `pause_turn` on Anthropic
+const SERVER_SIDE_TOOLS = new Set(["web_search"]);
 
-Context gathering:
-- Thread context is automatically included if the mention is in a thread
-- Use slack_get_channel_history to read recent channel messages for additional context
-- Don't ask the user for context you can find yourself - be proactive`;
+const SLACK_GET_CHANNEL_HISTORY_TOOL: Anthropic.Messages.Tool = {
+	name: "slack_get_channel_history",
+	description:
+		"Get recent messages from a Slack channel. Useful for understanding context when user references previous discussions.",
+	input_schema: {
+		type: "object" as const,
+		properties: {
+			channel_id: {
+				type: "string",
+				description: "The Slack channel ID",
+			},
+			limit: {
+				type: "number",
+				description: "Number of messages to fetch (default 10, max 20)",
+			},
+		},
+		required: ["channel_id"],
+	},
+};
 
 async function fetchAgentContext({
 	mcpClient,
-	userId,
 }: {
 	mcpClient: Client;
-	userId: string;
 }): Promise<string> {
-	const [membersResult, statusesResult, devicesResult] = await Promise.all([
-		mcpClient.callTool({ name: "list_members", arguments: {} }),
-		mcpClient.callTool({ name: "list_task_statuses", arguments: {} }),
-		mcpClient.callTool({
-			name: "list_devices",
-			arguments: { includeOffline: true },
-		}),
-	]);
-
 	const sections: string[] = [];
 
-	const membersData = membersResult.structuredContent as {
-		members: { id: string; name: string | null; email: string }[];
-	} | null;
-	if (membersData?.members?.length) {
-		const currentUser = membersData.members.find((m) => m.id === userId);
-		if (currentUser) {
-			sections.push(
-				`Current user: ${currentUser.name ?? currentUser.email} (id: ${currentUser.id}, email: ${currentUser.email})`,
-			);
-		}
-
-		const lines = membersData.members.map(
-			(m) => `- ${m.name ?? m.email} (id: ${m.id}, email: ${m.email})`,
-		);
-		sections.push(`Team members:\n${lines.join("\n")}`);
-	}
+	// Fetch team members, task statuses, and devices via MCP
+	const [statusesResult, devicesResult] = await Promise.all([
+		mcpClient.callTool({
+			name: "list_task_statuses",
+			arguments: {},
+		}),
+		mcpClient.callTool({
+			name: "list_devices",
+			arguments: {},
+		}),
+	]);
 
 	const statusesData = statusesResult.structuredContent as {
 		statuses: { id: string; name: string; type: string }[];
@@ -328,15 +249,13 @@ async function fetchAgentContext({
 		devices: {
 			deviceId: string;
 			deviceName: string | null;
-			ownerName: string | null;
-			ownerEmail: string;
 			isOnline: boolean;
 		}[];
 	} | null;
 	if (devicesData?.devices?.length) {
 		const lines = devicesData.devices.map(
 			(d) =>
-				`- ${d.deviceName ?? "Unknown"} (id: ${d.deviceId}, owner: ${d.ownerName ?? d.ownerEmail}, status: ${d.isOnline ? "online" : "offline"})`,
+				`- ${d.deviceName ?? "Unknown"} (id: ${d.deviceId}, status: ${d.isOnline ? "online" : "offline"})`,
 		);
 		sections.push(`Devices:\n${lines.join("\n")}`);
 	}
@@ -352,10 +271,9 @@ export async function runSlackAgent(
 
 	const connection = await db.query.integrationConnections.findFirst({
 		where: and(
-			eq(integrationConnections.organizationId, params.organizationId),
+			eq(integrationConnections.userId, params.userId),
 			eq(integrationConnections.provider, "slack"),
 		),
-		columns: { connectedByUserId: true },
 	});
 
 	if (!connection) {
@@ -373,8 +291,7 @@ export async function runSlackAgent(
 				threadTs: params.threadTs,
 			}),
 			createSupersetMcpClient({
-				organizationId: params.organizationId,
-				userId: connection.connectedByUserId,
+				userId: connection.userId,
 			}),
 		]);
 
@@ -385,7 +302,6 @@ export async function runSlackAgent(
 			supersetMcp.listTools(),
 			fetchAgentContext({
 				mcpClient: supersetMcp,
-				userId: connection.connectedByUserId,
 			}),
 		]);
 
@@ -403,173 +319,111 @@ export async function runSlackAgent(
 			},
 		];
 
-		const contextualSystem = `${SYSTEM_PROMPT}
-
-Current context:
-- Slack Channel: ${params.channelId}
-- Thread: ${params.threadTs}
-- Organization ID: ${params.organizationId}
-
-${agentContext}`;
+		const systemPrompt = `You are Superset Bot, an AI assistant that helps users with tasks and work management.\n\n${agentContext}\n\nWhen users ask about creating tasks, always use the create_task tool. Be concise and helpful.`;
 
 		const userContent = threadContext
-			? `${threadContext}\n\nCurrent message:\n${params.prompt}`
+			? `${threadContext}\n\n${params.prompt}`
 			: params.prompt;
 
-		const messages: Anthropic.MessageParam[] = [
+		let messages: Anthropic.Messages.MessageParam[] = [
 			{
 				role: "user",
 				content: userContent,
 			},
 		];
 
-		let response = await anthropic.messages.create({
-			model: "claude-sonnet-4-5",
-			max_tokens: 2048,
-			system: contextualSystem,
-			tools,
-			messages,
-		});
-
-		const MAX_TOOL_ITERATIONS = 10;
 		let iterations = 0;
+		const maxIterations = 10;
 
-		while (
-			(response.stop_reason === "tool_use" ||
-				response.stop_reason === "pause_turn") &&
-			iterations < MAX_TOOL_ITERATIONS
-		) {
+		while (iterations < maxIterations) {
 			iterations++;
 
-			// pause_turn: server-side tool (web search) paused a long-running turn
-			if (response.stop_reason === "pause_turn") {
-				try {
-					await params.onProgress?.("Searching the web...");
-				} catch {
-					// Non-critical
-				}
-				messages.push({ role: "assistant", content: response.content });
-				response = await anthropic.messages.create({
-					model: "claude-sonnet-4-5",
-					max_tokens: 2048,
-					system: contextualSystem,
-					tools,
-					messages,
-				});
-				continue;
-			}
+			await params.onProgress?.(`Thinking... (turn ${iterations})`);
 
-			// tool_use: handle client-side tools (MCP + slack_get_channel_history)
-			const toolUseBlocks = response.content.filter(
-				(b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+			const response = await anthropic.messages.create({
+				model: "claude-sonnet-4-20250514",
+				max_tokens: 4096,
+				system: systemPrompt,
+				messages,
+				tools,
+			});
+
+			// Note: pause_turn handling removed - not supported in current Anthropic SDK version
+
+			// Handle tool use
+			const toolUse = response.content.find(
+				(b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use",
 			);
 
-			const toolResults: Anthropic.ToolResultBlockParam[] = [];
-
-			for (const toolUse of toolUseBlocks) {
-				try {
-					const { toolName: rawToolName } = parseToolName(toolUse.name);
-					const progressStatus =
-						TOOL_PROGRESS_STATUS[toolUse.name] ??
-						TOOL_PROGRESS_STATUS[rawToolName] ??
-						"Working...";
-
-					try {
-						await params.onProgress?.(progressStatus);
-					} catch {
-						// Non-critical: don't fail the agent if progress update fails
-					}
-
-					let resultContent: string;
-
-					if (toolUse.name === "slack_get_channel_history") {
-						const input = toolUse.input as { limit?: number };
-						resultContent = await handleGetChannelHistory({
-							token: params.slackToken,
-							channelId: params.channelId,
-							limit: input.limit,
-						});
-					} else {
-						const { prefix, toolName } = parseToolName(toolUse.name);
-
-						if (prefix !== "superset" || !supersetMcp) {
-							toolResults.push({
-								type: "tool_result",
-								tool_use_id: toolUse.id,
-								content: JSON.stringify({
-									error: `Unknown tool: ${toolUse.name}`,
-								}),
-								is_error: true,
-							});
-							continue;
-						}
-
-						const result = await supersetMcp.callTool({
-							name: toolName,
-							arguments: toolUse.input as Record<string, unknown>,
-						});
-
-						resultContent = JSON.stringify(result.content);
-
-						const action = getActionFromToolResult(toolName, result);
-						if (action) {
-							actions.push(action);
-						}
-					}
-
-					toolResults.push({
-						type: "tool_result",
-						tool_use_id: toolUse.id,
-						content: resultContent,
-					});
-				} catch (error) {
-					console.error(
-						"[slack-agent] Tool execution error:",
-						toolUse.name,
-						error,
-					);
-					toolResults.push({
-						type: "tool_result",
-						tool_use_id: toolUse.id,
-						content: JSON.stringify({
-							error:
-								error instanceof Error
-									? error.message
-									: "Tool execution failed",
-						}),
-						is_error: true,
-					});
-				}
+			if (!toolUse) {
+				// No tool use - return final response
+				return {
+					text: parseTextContent(response.content),
+					actions,
+				};
 			}
 
-			messages.push({ role: "assistant", content: response.content });
-			messages.push({ role: "user", content: toolResults });
+			// Execute tool
+			const { prefix, toolName } = parseToolName(toolUse.name);
 
-			response = await anthropic.messages.create({
-				model: "claude-sonnet-4-5",
-				max_tokens: 2048,
-				system: contextualSystem,
-				tools,
-				messages,
-			});
+			if (SERVER_SIDE_TOOLS.has(toolName)) {
+				console.warn(
+					"[slack-agent] Client-side handling of server tool:",
+					toolName,
+				);
+			}
+
+			await params.onProgress?.(`Running ${toolName}...`);
+
+			let toolResult: unknown;
+			if (prefix === "superset") {
+				toolResult = await supersetMcp.callTool({
+					name: toolName,
+					arguments: toolUse.input as Record<string, unknown>,
+				});
+			} else if (toolName === "slack_get_channel_history") {
+				const input = toolUse.input as { channel_id: string; limit?: number };
+				toolResult = await handleGetChannelHistory(
+					supersetMcp,
+					params.slackToken,
+					input.channel_id,
+					input.limit,
+				);
+			} else {
+				toolResult = { error: `Unknown tool: ${toolUse.name}` };
+			}
+
+			// Convert tool result to action if applicable
+			const action = getActionFromToolResult(toolName, toolResult);
+			if (action) {
+				actions.push(action);
+			}
+
+			// Continue conversation with tool result
+			messages = [
+				...messages,
+				{
+					role: "assistant",
+					content: response.content,
+				},
+				{
+					role: "user",
+					content: [
+						{
+							type: "tool_result" as const,
+							tool_use_id: toolUse.id,
+							content: JSON.stringify(toolResult),
+						},
+					],
+				},
+			];
 		}
 
-		// Use the last text block — server-side tools like web_search produce
-		// multiple text blocks (preamble + synthesis) and we want the final one.
-		const textBlocks = response.content.filter(
-			(b): b is Anthropic.TextBlock => b.type === "text",
-		);
-		const textBlock = textBlocks.at(-1);
-
 		return {
-			text: textBlock?.text ?? "Done!",
+			text: "I've reached the maximum number of tool calls. Please try a more specific request.",
 			actions,
 		};
 	} finally {
-		if (cleanupSuperset) {
-			try {
-				await cleanupSuperset();
-			} catch {}
-		}
+		await cleanupSuperset?.();
 	}
 }

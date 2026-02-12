@@ -7,7 +7,7 @@ import type { DirectoryEntry } from "shared/file-tree-types";
 import { z } from "zod";
 import { publicProcedure, router } from "../..";
 
-const SEARCH_INDEX_TTL_MS = 30_000;
+const SEARCH_INDEX_TTL_MS = 30_00000000;
 const MAX_SEARCH_RESULTS = 500;
 const DEFAULT_IGNORE_PATTERNS = [
 	"**/node_modules/**",

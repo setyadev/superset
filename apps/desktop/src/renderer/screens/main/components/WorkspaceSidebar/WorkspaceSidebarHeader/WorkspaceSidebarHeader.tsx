@@ -3,7 +3,6 @@ import { cn } from "@superset/ui/utils";
 import { useMatchRoute, useNavigate } from "@tanstack/react-router";
 import { HiOutlineClipboardDocumentList } from "react-icons/hi2";
 import { LuLayers } from "react-icons/lu";
-import { GATED_FEATURES, usePaywall } from "renderer/components/Paywall";
 import { STROKE_WIDTH } from "../constants";
 import { NewWorkspaceButton } from "./NewWorkspaceButton";
 
@@ -16,7 +15,6 @@ export function WorkspaceSidebarHeader({
 }: WorkspaceSidebarHeaderProps) {
 	const navigate = useNavigate();
 	const matchRoute = useMatchRoute();
-	const { gateFeature } = usePaywall();
 
 	const isWorkspacesListOpen = !!matchRoute({ to: "/workspaces" });
 	const isTasksOpen = !!matchRoute({ to: "/tasks", fuzzy: true });
@@ -31,9 +29,7 @@ export function WorkspaceSidebarHeader({
 	};
 
 	const handleTasksClick = () => {
-		gateFeature(GATED_FEATURES.TASKS, () => {
-			navigate({ to: "/tasks" });
-		});
+		navigate({ to: "/tasks" });
 	};
 
 	if (isCollapsed) {

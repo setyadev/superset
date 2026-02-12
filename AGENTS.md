@@ -6,12 +6,9 @@ Guidelines for agents and developers working in this repository.
 
 Bun + Turbo monorepo with:
 - **Apps**:
-  - `apps/web` - Main web application (app.superset.sh)
-  - `apps/marketing` - Marketing site (superset.sh)
-  - `apps/admin` - Admin dashboard
   - `apps/api` - API backend
+  - `apps/streams` - AI chat streams server
   - `apps/desktop` - Electron desktop application (see [Desktop App Guide](#desktop-app-electron) below)
-  - `apps/docs` - Documentation site
 - **Packages**:
   - `packages/ui` - Shared UI components (shadcn/ui + TailwindCSS v4).
     - Add components: `npx shadcn@latest add <component>` (run in `packages/ui/`)

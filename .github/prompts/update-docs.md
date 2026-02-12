@@ -1,5 +1,7 @@
 # Weekly Docs Update
 
+**⚠️ DEPRECATED: The docs site (apps/docs) has been removed from this repository.**
+
 Review recently merged PRs and update documentation to reflect any new features, changed behavior, or removed functionality.
 
 ## Instructions

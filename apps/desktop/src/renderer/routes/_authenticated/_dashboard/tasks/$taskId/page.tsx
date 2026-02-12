@@ -1,6 +1,5 @@
 import { Button } from "@superset/ui/button";
 import { ScrollArea } from "@superset/ui/scroll-area";
-import { Separator } from "@superset/ui/separator";
 import { eq, or } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -9,8 +8,6 @@ import { HiArrowLeft } from "react-icons/hi2";
 import { LuExternalLink } from "react-icons/lu";
 import { useCollections } from "renderer/routes/_authenticated/providers/CollectionsProvider";
 import type { TaskWithStatus } from "../components/TasksView/hooks/useTasksTable";
-import { ActivitySection } from "./components/ActivitySection";
-import { CommentInput } from "./components/CommentInput";
 import { EditableTitle } from "./components/EditableTitle";
 import { PropertiesSidebar } from "./components/PropertiesSidebar";
 import { TaskMarkdownRenderer } from "./components/TaskMarkdownRenderer";
@@ -37,13 +34,9 @@ function TaskDetailPage() {
 				.innerJoin({ status: collections.taskStatuses }, ({ tasks, status }) =>
 					eq(tasks.statusId, status.id),
 				)
-				.leftJoin({ assignee: collections.users }, ({ tasks, assignee }) =>
-					eq(tasks.assigneeId, assignee.id),
-				)
-				.select(({ tasks, status, assignee }) => ({
+				.select(({ tasks, status }) => ({
 					...tasks,
 					status,
-					assignee: assignee ?? null,
 				}))
 				.where(({ tasks }) => or(eq(tasks.id, taskId), eq(tasks.slug, taskId))),
 		[collections, taskId],
@@ -117,20 +110,6 @@ function TaskDetailPage() {
 							content={task.description ?? ""}
 							onSave={handleSaveDescription}
 						/>
-
-						<Separator className="my-8" />
-
-						<h2 className="text-lg font-semibold mb-4">Activity</h2>
-
-						<ActivitySection
-							createdAt={new Date(task.createdAt)}
-							creatorName={task.assignee?.name ?? "Someone"}
-							creatorAvatarUrl={task.assignee?.image}
-						/>
-
-						<div className="mt-6">
-							<CommentInput />
-						</div>
 					</div>
 				</ScrollArea>
 			</div>

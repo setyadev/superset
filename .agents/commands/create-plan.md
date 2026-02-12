@@ -4,8 +4,6 @@
 > This file is the ExecPlan template and guide only.
 > Create plans in the appropriate location:
 > - **Desktop app work**: `apps/desktop/plans/<timestamp>-<plan-name>.md`
-> - **Web app work**: `apps/web/plans/<timestamp>-<plan-name>.md`
-> - **Marketing site work**: `apps/marketing/plans/<timestamp>-<plan-name>.md`
 > - **API work**: `apps/api/plans/<timestamp>-<plan-name>.md`
 > - **Shared packages/cross-app work**: `plans/<timestamp>-<plan-name>.md` (root)
 
@@ -23,8 +21,6 @@ Steps:
 7. Closeout: write Outcomes & Retrospective; ensure the plan remains self-contained and accurate.
 8. Write your plan to the appropriate location:
    - Desktop app: `apps/desktop/plans/<timestamp>-<plan-name>.md`
-   - Web app: `apps/web/plans/<timestamp>-<plan-name>.md`
-   - Marketing: `apps/marketing/plans/<timestamp>-<plan-name>.md`
    - API: `apps/api/plans/<timestamp>-<plan-name>.md`
    - Cross-app/shared: `plans/<timestamp>-<plan-name>.md`
    Use `<timestamp>` in `YYYYMMDD-HHmm` format (e.g., `20260103-1045-my-feature-plan.md`). This ensures plans are sorted from most recent to oldest.
@@ -356,7 +352,7 @@ ExecPlans have a defined lifecycle that keeps the plans folders clean and provid
     ├── done/
     └── abandoned/
 
-    apps/web/plans/            # Web app plans
+    apps/api/plans/            # API plans
     ├── <active-plans>.md
     ├── done/
     └── abandoned/

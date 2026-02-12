@@ -15,7 +15,7 @@ export async function GET(request: Request): Promise<Response> {
 		return new Response("Unauthorized", { status: 401 });
 	}
 
-	const organizationId = sessionData.session.activeOrganizationId;
+	const organizationId = sessionData.session.userId;
 	if (!organizationId) {
 		return new Response("No active organization", { status: 400 });
 	}
@@ -44,7 +44,7 @@ export async function GET(request: Request): Promise<Response> {
 	// Get the org's Linear access token
 	const connection = await db.query.integrationConnections.findFirst({
 		where: and(
-			eq(integrationConnections.organizationId, organizationId),
+			eq(integrationConnections.userId, organizationId),
 			eq(integrationConnections.provider, "linear"),
 		),
 	});

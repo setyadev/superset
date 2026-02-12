@@ -22,22 +22,13 @@ export const agentRouter = {
 			}),
 		)
 		.mutation(async ({ ctx, input }) => {
-			const organizationId = ctx.session.session.activeOrganizationId;
-			if (!organizationId) {
-				throw new TRPCError({
-					code: "BAD_REQUEST",
-					message: "No active organization selected",
-				});
-			}
+			const userId = ctx.session.user.id;
 
 			const [existingCommand] = await db
 				.select()
 				.from(agentCommands)
 				.where(
-					and(
-						eq(agentCommands.id, input.id),
-						eq(agentCommands.organizationId, organizationId),
-					),
+					and(eq(agentCommands.id, input.id), eq(agentCommands.userId, userId)),
 				);
 
 			if (!existingCommand) {

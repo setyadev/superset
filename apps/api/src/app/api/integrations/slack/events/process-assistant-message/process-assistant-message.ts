@@ -64,7 +64,7 @@ export async function processAssistantMessage({
 			prompt: event.text ?? "",
 			channelId: event.channel,
 			threadTs,
-			organizationId: connection.organizationId,
+			userId: connection.userId,
 			slackToken: connection.accessToken,
 			onProgress: messageTs
 				? async (status) => {

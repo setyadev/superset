@@ -10,10 +10,10 @@ async function verifyToken(req: Request, bearerToken?: string) {
 	const session = await auth.api.getSession({ headers: req.headers });
 	if (session?.session) {
 		const extendedSession = session.session as {
-			activeOrganizationId?: string;
+			userId?: string;
 		};
-		if (!extendedSession.activeOrganizationId) {
-			console.error("[mcp/auth] Session missing activeOrganizationId");
+		if (!extendedSession.userId) {
+			console.error("[mcp/auth] Session missing userId");
 			return undefined;
 		}
 		return {
@@ -22,8 +22,7 @@ async function verifyToken(req: Request, bearerToken?: string) {
 			scopes: ["mcp:full"],
 			extra: {
 				mcpContext: {
-					userId: session.user.id,
-					organizationId: extendedSession.activeOrganizationId,
+					userId: extendedSession.userId,
 				} satisfies McpContext,
 			},
 		};
@@ -41,17 +40,6 @@ async function verifyToken(req: Request, bearerToken?: string) {
 					console.error("[mcp/auth] API key missing userId");
 					return undefined;
 				}
-				const metadata =
-					typeof result.key.metadata === "string"
-						? JSON.parse(result.key.metadata)
-						: result.key.metadata;
-				const organizationId = metadata?.organizationId as string | undefined;
-				if (!organizationId) {
-					console.error(
-						"[mcp/auth] API key missing organizationId in metadata",
-					);
-					return undefined;
-				}
 				return {
 					token: "api-key",
 					clientId: "api-key",
@@ -59,7 +47,6 @@ async function verifyToken(req: Request, bearerToken?: string) {
 					extra: {
 						mcpContext: {
 							userId,
-							organizationId,
 						} satisfies McpContext,
 					},
 				};
@@ -79,10 +66,8 @@ async function verifyToken(req: Request, bearerToken?: string) {
 					audience: [env.NEXT_PUBLIC_API_URL, `${env.NEXT_PUBLIC_API_URL}/`],
 				},
 			});
-			if (!payload?.sub || !payload.organizationId) {
-				console.error(
-					"[mcp/auth] Access token missing sub or organizationId claim",
-				);
+			if (!payload?.sub || !payload.userId) {
+				console.error("[mcp/auth] Access token missing sub or userId claim");
 				return undefined;
 			}
 
@@ -98,8 +83,7 @@ async function verifyToken(req: Request, bearerToken?: string) {
 				scopes,
 				extra: {
 					mcpContext: {
-						userId: payload.sub,
-						organizationId: payload.organizationId as string,
+						userId: payload.userId as string,
 					} satisfies McpContext,
 				},
 			};

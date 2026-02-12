@@ -1,7 +1,6 @@
 import { db } from "@superset/db/client";
-import { githubInstallations, members } from "@superset/db/schema";
+import { githubInstallations } from "@superset/db/schema";
 import { Client } from "@upstash/qstash";
-import { and, eq } from "drizzle-orm";
 
 import { env } from "@/env";
 import { verifySignedState } from "@/lib/oauth-state";
@@ -39,114 +38,75 @@ export async function GET(request: Request) {
 		);
 	}
 
-	const { organizationId, userId } = stateData;
-
-	// Re-verify membership at callback time (defense-in-depth)
-	const membership = await db.query.members.findFirst({
-		where: and(
-			eq(members.organizationId, organizationId),
-			eq(members.userId, userId),
-		),
-	});
-
-	if (!membership) {
-		console.error("[github/callback] Membership verification failed:", {
-			organizationId,
-			userId,
-		});
-		return Response.redirect(
-			`${env.NEXT_PUBLIC_WEB_URL}/integrations/github?error=unauthorized`,
-		);
-	}
+	const { userId } = stateData;
 
 	try {
 		const octokit = await githubApp.getInstallationOctokit(
 			Number(installationId),
 		);
-
-		const installationResult = await octokit
-			.request("GET /app/installations/{installation_id}", {
-				installation_id: Number(installationId),
-			})
-			.catch((error: Error) => {
-				console.error("[github/callback] Failed to fetch installation:", error);
-				return null;
-			});
-
-		if (!installationResult) {
-			return Response.redirect(
-				`${env.NEXT_PUBLIC_WEB_URL}/integrations/github?error=installation_fetch_failed`,
-			);
-		}
-
-		const installation = installationResult.data;
-
-		// Extract account info - account can be User or Enterprise
+		const { data: installation } = await octokit.rest.apps.getInstallation({
+			installation_id: Number(installationId),
+		});
 		const account = installation.account;
-		const accountLogin =
-			account && "login" in account ? account.login : (account?.name ?? "");
-		const accountType =
-			account && "type" in account ? account.type : "Organization";
+		const accountLogin = account
+			? "login" in account
+				? account.login
+				: (account.slug ?? account.name ?? "unknown")
+			: "unknown";
+		const accountType = account
+			? "type" in account
+				? account.type
+				: "Organization"
+			: "Organization";
 
-		// Save the installation to our database
-		const [savedInstallation] = await db
+		// Store installation in database
+		await db
 			.insert(githubInstallations)
 			.values({
-				organizationId,
-				connectedByUserId: userId,
-				installationId: String(installation.id),
+				userId,
+				installationId: installationId,
 				accountLogin,
 				accountType,
 				permissions: installation.permissions as Record<string, string>,
 			})
 			.onConflictDoUpdate({
-				target: [githubInstallations.organizationId],
+				target: githubInstallations.installationId,
 				set: {
-					connectedByUserId: userId,
-					installationId: String(installation.id),
 					accountLogin,
 					accountType,
 					permissions: installation.permissions as Record<string, string>,
 					suspended: false,
-					suspendedAt: null, // Clear suspension if reinstalling
 					updatedAt: new Date(),
 				},
-			})
-			.returning();
+			});
 
-		if (!savedInstallation) {
-			return Response.redirect(
-				`${env.NEXT_PUBLIC_WEB_URL}/integrations/github?error=save_failed`,
-			);
-		}
+		// Trigger initial sync
+		const syncUrl = `${env.NEXT_PUBLIC_API_URL}/api/github/jobs/initial-sync`;
+		const syncBody = { userId };
 
-		// Queue initial sync job
-		try {
+		if (env.NODE_ENV === "development") {
+			fetch(syncUrl, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(syncBody),
+			}).catch((error) => {
+				console.error("[github/callback] Dev sync failed:", error);
+			});
+		} else {
 			await qstash.publishJSON({
-				url: `${env.NEXT_PUBLIC_API_URL}/api/github/jobs/initial-sync`,
-				body: {
-					installationDbId: savedInstallation.id,
-					organizationId,
-				},
+				url: syncUrl,
+				body: syncBody,
 				retries: 3,
 			});
-		} catch (error) {
-			console.error(
-				"[github/callback] Failed to queue initial sync job:",
-				error,
-			);
-			return Response.redirect(
-				`${env.NEXT_PUBLIC_WEB_URL}/integrations/github?warning=sync_queue_failed`,
-			);
 		}
 
 		return Response.redirect(
-			`${env.NEXT_PUBLIC_WEB_URL}/integrations/github?success=github_installed`,
+			`${env.NEXT_PUBLIC_WEB_URL}/integrations/github?success=true`,
 		);
 	} catch (error) {
-		console.error("[github/callback] Unexpected error:", error);
+		console.error("[github/callback] Error:", error);
 		return Response.redirect(
-			`${env.NEXT_PUBLIC_WEB_URL}/integrations/github?error=unexpected`,
+			`${env.NEXT_PUBLIC_WEB_URL}/integrations/github?error=installation_failed`,
 		);
 	}
 }

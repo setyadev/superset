@@ -63,13 +63,6 @@ export default defineConfig({
 			"process.env.SENTRY_DSN_DESKTOP": defineEnv(
 				process.env.SENTRY_DSN_DESKTOP,
 			),
-			// Must match renderer for analytics in main process
-			"process.env.NEXT_PUBLIC_POSTHOG_KEY": defineEnv(
-				process.env.NEXT_PUBLIC_POSTHOG_KEY,
-			),
-			"process.env.NEXT_PUBLIC_POSTHOG_HOST": defineEnv(
-				process.env.NEXT_PUBLIC_POSTHOG_HOST,
-			),
 		},
 
 		build: {
@@ -146,12 +139,6 @@ export default defineConfig({
 				"https://docs.superset.sh",
 			),
 			"import.meta.env.DEV_SERVER_PORT": defineEnv(String(DEV_SERVER_PORT)),
-			"import.meta.env.NEXT_PUBLIC_POSTHOG_KEY": defineEnv(
-				process.env.NEXT_PUBLIC_POSTHOG_KEY,
-			),
-			"import.meta.env.NEXT_PUBLIC_POSTHOG_HOST": defineEnv(
-				process.env.NEXT_PUBLIC_POSTHOG_HOST,
-			),
 			"import.meta.env.SENTRY_DSN_DESKTOP": defineEnv(
 				process.env.SENTRY_DSN_DESKTOP,
 			),

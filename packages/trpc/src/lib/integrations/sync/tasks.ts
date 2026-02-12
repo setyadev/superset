@@ -13,7 +13,7 @@ const PROVIDER_ENDPOINTS: Record<string, string> = {
 export async function syncTask(taskId: string) {
 	const task = await db.query.tasks.findFirst({
 		where: eq(tasks.id, taskId),
-		columns: { organizationId: true, externalProvider: true },
+		columns: { userId: true, externalProvider: true },
 	});
 
 	if (!task) {
@@ -21,7 +21,7 @@ export async function syncTask(taskId: string) {
 	}
 
 	const connections = await db.query.integrationConnections.findMany({
-		where: eq(integrationConnections.organizationId, task.organizationId),
+		where: eq(integrationConnections.userId, task.userId),
 		columns: { provider: true },
 	});
 
