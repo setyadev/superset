@@ -31,11 +31,11 @@ const tsconfigPaths = tsconfigPathsPlugin({
 // Sentry plugin for uploading sourcemaps (only in CI with auth token)
 const sentryPlugin = process.env.SENTRY_AUTH_TOKEN
 	? sentryVitePlugin({
-			org: "superset-sh",
-			project: "desktop",
-			authToken: process.env.SENTRY_AUTH_TOKEN,
-			release: { name: version },
-		})
+		org: "superset-sh",
+		project: "desktop",
+		authToken: process.env.SENTRY_AUTH_TOKEN,
+		release: { name: version },
+	})
 	: null;
 
 export default defineConfig({
@@ -85,7 +85,7 @@ export default defineConfig({
 				output: {
 					dir: resolve(devPath, "main"),
 				},
-				external: ["electron", "better-sqlite3", "node-pty"],
+				external: ["electron", "better-sqlite3", "node-pty", "pg-native"],
 				plugins: [sentryPlugin].filter(Boolean),
 			},
 		},
