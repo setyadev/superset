@@ -32,6 +32,46 @@ function isExecFileException(error: unknown): error is ExecFileException {
 	);
 }
 
+async function pathExists(p: string): Promise<boolean> {
+	try {
+		await stat(p);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Runs `git worktree add` and tolerates hook failures.
+ * If the command fails but the worktree was created on disk (e.g., a
+ * post-checkout hook exited non-zero), logs a warning and returns normally.
+ * Any other failure is re-thrown for the caller to handle.
+ */
+async function execWorktreeAdd({
+	args,
+	env,
+	worktreePath,
+	timeout = 120_000,
+}: {
+	args: string[];
+	env: Record<string, string>;
+	worktreePath: string;
+	timeout?: number;
+}): Promise<void> {
+	try {
+		await execFileAsync("git", args, { env, timeout });
+	} catch (error) {
+		if (await pathExists(worktreePath)) {
+			const msg = error instanceof Error ? error.message : String(error);
+			console.warn(
+				`[git] Worktree created at ${worktreePath} but a git hook failed (non-fatal): ${msg}`,
+			);
+			return;
+		}
+		throw error;
+	}
+}
+
 async function getGitEnv(): Promise<Record<string, string>> {
 	const shellEnv = await getShellEnvironment();
 	const result: Record<string, string> = {};
@@ -457,9 +497,8 @@ export async function createWorktree(
 			}
 		}
 
-		await execFileAsync(
-			"git",
-			[
+		await execWorktreeAdd({
+			args: [
 				"-C",
 				mainRepoPath,
 				"worktree",
@@ -472,8 +511,9 @@ export async function createWorktree(
 				// creating a new branch from a remote branch like origin/main.
 				`${startPoint}^{commit}`,
 			],
-			{ env, timeout: 120_000 },
-		);
+			env,
+			worktreePath,
+		});
 
 		// Enable autoSetupRemote so the first `git push` automatically creates
 		// the remote branch and sets upstream (like `git push -u origin <branch>`).
@@ -565,11 +605,11 @@ export async function createWorktreeFromExistingBranch({
 
 		if (branchExistsLocally) {
 			// Branch exists locally - just checkout into the worktree
-			await execFileAsync(
-				"git",
-				["-C", mainRepoPath, "worktree", "add", worktreePath, branch],
-				{ env, timeout: 120_000 },
-			);
+			await execWorktreeAdd({
+				args: ["-C", mainRepoPath, "worktree", "add", worktreePath, branch],
+				env,
+				worktreePath,
+			});
 		} else {
 			// Branch doesn't exist locally - check if it's a remote branch
 			const remoteBranches = await git.branch(["-r"]);
@@ -577,9 +617,8 @@ export async function createWorktreeFromExistingBranch({
 			if (remoteBranches.all.includes(remoteBranchName)) {
 				// Create worktree with local tracking branch from remote
 				// This creates a new local branch that tracks the remote
-				await execFileAsync(
-					"git",
-					[
+				await execWorktreeAdd({
+					args: [
 						"-C",
 						mainRepoPath,
 						"worktree",
@@ -590,8 +629,9 @@ export async function createWorktreeFromExistingBranch({
 						worktreePath,
 						remoteBranchName,
 					],
-					{ env, timeout: 120_000 },
-				);
+					env,
+					worktreePath,
+				});
 			} else {
 				throw new Error(
 					`Branch "${branch}" does not exist locally or on remote`,
@@ -1708,11 +1748,11 @@ export async function createWorktreeFromPr({
 				}
 			}
 
-			await execFileAsync(
-				"git",
-				["-C", mainRepoPath, "worktree", "add", worktreePath, branchName],
-				{ env, timeout: 120_000 },
-			);
+			await execWorktreeAdd({
+				args: ["-C", mainRepoPath, "worktree", "add", worktreePath, branchName],
+				env,
+				worktreePath,
+			});
 
 			if (localCommit !== remoteCommit) {
 				await execFileAsync(
@@ -1727,7 +1767,7 @@ export async function createWorktreeFromPr({
 				args.push("--track");
 			}
 			args.push("-b", branchName, worktreePath, remoteRef);
-			await execFileAsync("git", args, { env, timeout: 120_000 });
+			await execWorktreeAdd({ args, env, worktreePath });
 		}
 
 		// Enable autoSetupRemote so `git push` just works without -u flag.
